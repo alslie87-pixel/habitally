@@ -373,9 +373,19 @@
   </div>
 
   <script>
-    // multi-user: ?user=<name> routes API calls to that customer's sheet
-    const HT_USER = (new URLSearchParams(location.search).get('user') || '').trim();
-    const api = p => HT_USER ? p + (p.includes('?') ? '&' : '?') + 'user=' + encodeURIComponent(HT_USER) : p;
+    // multi-user: ?user=<name>&t=<token> routes API calls to that customer's
+    // sheet. Both are forwarded verbatim on every API call; the server checks
+    // that the token matches the user's row in the Customers sheet.
+    const HT_QS = new URLSearchParams(location.search);
+    const HT_USER = (HT_QS.get('user') || '').trim();
+    const HT_TOKEN = (HT_QS.get('t') || '').trim();
+    const api = p => {
+      const q = new URLSearchParams();
+      if (HT_USER) q.set('user', HT_USER);
+      if (HT_TOKEN) q.set('t', HT_TOKEN);
+      const s = q.toString();
+      return s ? p + (p.includes('?') ? '&' : '?') + s : p;
+    };
     // ── THEME ─────────────────────────────────────────────
     const savedTheme = localStorage.getItem('hbt-theme') || 'dark';
     if (savedTheme === 'light') document.documentElement.classList.add('light');

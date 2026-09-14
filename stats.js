@@ -5,8 +5,17 @@
 (function () {
   'use strict';
   const API = '/api';
-  const HT_USER_S = (new URLSearchParams(location.search).get('user') || '').trim();
-  const apiUrl = p => HT_USER_S ? p + (p.includes('?') ? '&' : '?') + 'user=' + encodeURIComponent(HT_USER_S) : p;
+  // multi-user: forward ?user= and ?t= (link token) on every API call
+  const HT_QS_S = new URLSearchParams(location.search);
+  const HT_USER_S = (HT_QS_S.get('user') || '').trim();
+  const HT_TOKEN_S = (HT_QS_S.get('t') || '').trim();
+  const apiUrl = p => {
+    const q = new URLSearchParams();
+    if (HT_USER_S) q.set('user', HT_USER_S);
+    if (HT_TOKEN_S) q.set('t', HT_TOKEN_S);
+    const s = q.toString();
+    return s ? p + (p.includes('?') ? '&' : '?') + s : p;
+  };
   const $ = (sel, el) => (el || document).querySelector(sel);
 
   /* Manrope */
