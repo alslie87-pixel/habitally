@@ -1,5 +1,6 @@
 const { google } = require('googleapis');
 const { resolveSheetId } = require('./_user');
+const { todayFrom, isoLocal } = require('./_date');
 
 
 // v28 stats endpoint — one batchGet, everything the stats page needs.
@@ -50,7 +51,7 @@ module.exports = async (req, res) => {
     const cpRows = vr[12].values || [];
     const markerCell = (vr[13].values && vr[13].values[0] && vr[13].values[0][0]) || '';
 
-    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const today = todayFrom(req); // client's local date (?date=YYYY-MM-DD) or server midnight
     const curMonth = today.getMonth();
 
     // ── habits (position-based, like get-habits) ─────────────
@@ -99,7 +100,7 @@ module.exports = async (req, res) => {
         if (date > today) return;
         const p = num(row[23]);
         if (p !== null) {
-          daily.push({ t: date.toISOString().slice(0, 10), p });
+          daily.push({ t: isoLocal(date), p });
           if (p > bestDayEver) bestDayEver = p;
           if (p >= 0.999 && active.some(h => h.type === 'good')) perfectDays++;
         }

@@ -9,10 +9,15 @@
   const HT_QS_S = new URLSearchParams(location.search);
   const HT_USER_S = (HT_QS_S.get('user') || '').trim();
   const HT_TOKEN_S = (HT_QS_S.get('t') || '').trim();
+  const localDateS = () => {
+    const d = new Date(), p = n => (n < 10 ? '0' : '') + n;
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+  };
   const apiUrl = p => {
     const q = new URLSearchParams();
     if (HT_USER_S) q.set('user', HT_USER_S);
     if (HT_TOKEN_S) q.set('t', HT_TOKEN_S);
+    q.set('date', localDateS());
     const s = q.toString();
     return s ? p + (p.includes('?') ? '&' : '?') + s : p;
   };

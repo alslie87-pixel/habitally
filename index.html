@@ -379,10 +379,16 @@
     const HT_QS = new URLSearchParams(location.search);
     const HT_USER = (HT_QS.get('user') || '').trim();
     const HT_TOKEN = (HT_QS.get('t') || '').trim();
+    // local calendar date, so the server (UTC) agrees with the user on "today"
+    const localDate = () => {
+      const d = new Date(), p = n => (n < 10 ? '0' : '') + n;
+      return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+    };
     const api = p => {
       const q = new URLSearchParams();
       if (HT_USER) q.set('user', HT_USER);
       if (HT_TOKEN) q.set('t', HT_TOKEN);
+      q.set('date', localDate());
       const s = q.toString();
       return s ? p + (p.includes('?') ? '&' : '?') + s : p;
     };

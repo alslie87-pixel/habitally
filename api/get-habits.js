@@ -1,5 +1,6 @@
 const { google } = require('googleapis');
 const { resolveSheetId } = require('./_user');
+const { todayFrom } = require('./_date');
 
 
 // ── v28 SHEET STRUCTURE ──────────────────────────────────────
@@ -97,8 +98,7 @@ module.exports = async (req, res) => {
     const conqueredBad = badHabits.filter(h => h.status === 'conquered');
 
     // ── 2. READ FOCUS + MONTH DATA ───────────────────────────
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const today = todayFrom(req); // client's local date (?date=YYYY-MM-DD) or server midnight
     const monthNames = ["January","February","March","April","May","June",
                         "July","August","September","October","November","December"];
     const monthName = monthNames[today.getMonth()];
