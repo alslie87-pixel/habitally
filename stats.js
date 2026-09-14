@@ -17,6 +17,7 @@
     return s ? p + (p.includes('?') ? '&' : '?') + s : p;
   };
   const $ = (sel, el) => (el || document).querySelector(sel);
+  const esc = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', '\x27': '&#39;' })[c]);
 
   /* Manrope */
   const fl = document.createElement('link');
@@ -106,6 +107,8 @@
 
   /* ---------- state ---------- */
   let S = null;
+  let loadError = null;   // message from the last failed load(); null while loading / after success
+  let inflight = null;    // promise of the load() currently running
   const UI = { mi: null, open: null, pd: null, sb: null, day: null };
 
   /* ---------- panel + fab ---------- */
@@ -120,7 +123,7 @@
   fab.onclick = openPanel;
   document.body.appendChild(fab);
 
-  function openPanel() { render(); panel.classList.add('open'); }
+  function openPanel() { if (!S) loadError = null; render(); panel.classList.add('open'); }
   function closePanel() { panel.classList.remove('open'); }
 
   /* swipe with horizontal-scroller guard */
@@ -174,6 +177,20 @@
   /* ---------- render ---------- */
   function render() {
     if (!S) {
+      if (loadError) {
+        // one failed attempt -> show the error and wait for the user; never re-fetch on our own
+        panel.innerHTML = '<div class="hsx-page"><div class="hsx-back">← back</div>' +
+          '<div style="padding:40px 24px;text-align:center">' +
+          '<div style="font:700 15px Manrope;color:var(--hxT1);margin-bottom:8px">Couldn’t load your stats</div>' +
+          '<div style="font:500 12px/1.6 Manrope;color:var(--hxT3);margin-bottom:22px">Check your connection and try again. If it keeps failing, make sure all twelve month tabs still exist in your sheet.</div>' +
+          '<button id="hsx-retry" style="font:700 13px Manrope;padding:10px 22px;border-radius:100px;border:1px solid var(--hxB2);background:transparent;color:var(--hxT1);cursor:pointer">Try again</button>' +
+          '<div style="font:500 10px Manrope;color:var(--hxFoot);margin-top:18px;word-break:break-word">' + esc(loadError) + '</div>' +
+          '</div></div>';
+        bindBack();
+        const rb = $('#hsx-retry', panel);
+        if (rb) rb.onclick = () => { loadError = null; render(); };
+        return;
+      }
       panel.innerHTML = '<div class="hsx-page"><div class="hsx-back">← back</div><div style="padding:30px;text-align:center;color:var(--hxT3);font:600 12px Manrope">Loading…</div></div>';
       bindBack(); load().then(() => render()); return;
     }
@@ -523,12 +540,36 @@
     };
   }
 
-  async function load() {
-    try {
-      const r = await fetch(apiUrl(API + '/get-stats'));
-      S = await r.json();
-      return S;
-    } catch (e) { console.error('stats load failed', e); return null; }
+  // S is only ever set to a payload that has the shape render() needs.
+  // Anything else (network error, {error} body, non-2xx, missing fields)
+  // leaves S null and puts a message in loadError. A load already in flight
+  // is reused so render() and the boot code never fire two requests at once.
+  function load() {
+    if (inflight) return inflight;
+    inflight = (async () => {
+      loadError = null;
+      try {
+        const r = await fetch(apiUrl(API + '/get-stats'));
+        let data = null;
+        try { data = await r.json(); } catch (e) { /* non-JSON body */ }
+        if (!r.ok || !data || data.error || !Array.isArray(data.months)) {
+          loadError = (data && data.error) ? String(data.error) : ('HTTP ' + r.status);
+          console.error('stats load failed', loadError);
+          S = null;
+          return null;
+        }
+        S = data;
+        return S;
+      } catch (e) {
+        loadError = (e && e.message) || 'network error';
+        console.error('stats load failed', e);
+        S = null;
+        return null;
+      } finally {
+        inflight = null;
+      }
+    })();
+    return inflight;
   }
 
 /* ---------- onboarding ---------- */
