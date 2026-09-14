@@ -9,6 +9,8 @@ module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   if (req.method === 'OPTIONS') return res.status(200).end();
   try {
+    const sheetId = await resolveSheetId(req);
+    if (!sheetId) return res.status(404).json({ error: 'unknown user' });
     const creds = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT);
     const auth = new google.auth.GoogleAuth({
       credentials: creds,
@@ -16,7 +18,7 @@ module.exports = async (req, res) => {
     });
     const sheets = google.sheets({ version: 'v4', auth });
     await sheets.spreadsheets.values.update({
-      spreadsheetId: await resolveSheetId(req),
+      spreadsheetId: sheetId,
       range: "'⚙️ Control Panel'!Z1",
       valueInputOption: 'RAW',
       requestBody: { values: [['app-onboarded']] }

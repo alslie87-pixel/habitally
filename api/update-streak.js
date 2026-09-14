@@ -13,6 +13,7 @@ module.exports = async (req, res) => {
     });
     const sheets = google.sheets({ version: 'v4', auth });
     const sheetId = await resolveSheetId(req);
+    if (!sheetId) return res.status(404).json({ error: 'unknown user' });
     await sheets.spreadsheets.values.update({
       spreadsheetId: sheetId,
       range: "'⚡ Dashboard'!C7",

@@ -34,6 +34,7 @@ module.exports = async (req, res) => {
     });
     const sheets = google.sheets({ version: 'v4', auth });
     const sheetId = await resolveSheetId(req);
+    if (!sheetId) return res.status(404).json({ error: 'unknown user' });
 
     const ranges = MONTHS.map(m => `'${m}'!A1:X47`);
     ranges.push("'⚙️ Control Panel'!E7:H20");

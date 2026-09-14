@@ -22,6 +22,8 @@ module.exports = async (req, res) => {
 
   try {
     const { weeklyPercent, streak, weakestHabit } = req.body;
+    const sheetId = await resolveSheetId(req);
+    if (!sheetId) return res.status(404).json({ error: 'unknown user' });
 
     // Read the user's own coaching prompt from the sheet
     let instruction = DEFAULT_PROMPT;
@@ -33,7 +35,7 @@ module.exports = async (req, res) => {
       });
       const sheets = google.sheets({ version: 'v4', auth });
       const cellRes = await sheets.spreadsheets.values.get({
-        spreadsheetId: await resolveSheetId(req),
+        spreadsheetId: sheetId,
         range: PROMPT_CELL
       });
       const cellVal = cellRes.data.values && cellRes.data.values[0] && cellRes.data.values[0][0];

@@ -64,6 +64,7 @@ module.exports = async (req, res) => {
     });
     const sheets = google.sheets({ version: 'v4', auth });
     const sheetId = await resolveSheetId(req);
+    if (!sheetId) return res.status(404).json({ error: 'unknown user' });
 
     // ── 1. READ CONFIG (habit list, position-based mapping) ──
     const configRes = await sheets.spreadsheets.values.get({

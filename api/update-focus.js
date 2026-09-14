@@ -17,6 +17,7 @@ module.exports = async (req, res) => {
     });
     const sheets = google.sheets({ version: 'v4', auth });
     const sheetId = await resolveSheetId(req);
+    if (!sheetId) return res.status(404).json({ error: 'unknown user' });
     const cell = type === 'good'
       ? "'⚙️ Control Panel'!C20"
       : "'⚙️ Control Panel'!C21";
