@@ -14,11 +14,13 @@ Guidance for Claude (and humans) working in this repo.
 
 | File | Sheet access | Purpose |
 |---|---|---|
-| `sheets.js` | — | Shared helper: builds Google auth + a `sheets` client. |
+| `_user.js` | **read** (Customers sheet) | Resolves `?user=` + `?t=` to the customer's spreadsheet ID. |
+| `_date.js` | — | `todayFrom(req)`: the client's `?date=` or server midnight. |
+| `_validate.js` | **read** (Control Panel) | Shared input validation for the write endpoints. |
 | `get-habits.js` | **read** (readonly scope) | Reads the Control Panel + habit tabs, returns habits/config. |
 | `get-coaching.js` | **none** | No sheet access — takes stats from the request body, calls OpenAI (`OPENAI_API_KEY`), returns a coaching note. |
 | `toggle-habit.js` | **write** | Toggles a single habit cell (checkbox) for a day. |
-| `update-streak.js` | **write** | Updates streak values. |
+| `set-onboarded.js` | **write** | Writes the hidden onboarding marker (Control Panel Z1). |
 | `update-focus.js` | **write** | Updates the current focus. |
 | `update-config.js` | **write** | Updates Control Panel configuration. |
 
@@ -43,7 +45,7 @@ Guidance for Claude (and humans) working in this repo.
 2. **Always open a PR** for the change.
 3. **Never merge.** Leave the PR open for the human to review and merge.
 4. **Never write to the live Google Sheet.** Don't run the write endpoints
-   (`toggle-habit`, `update-streak`, `update-focus`, `update-config`) against the
+   (`toggle-habit`, `update-focus`, `update-config`, `set-onboarded`) against the
    real sheet, and don't add code that does so as a side effect of testing.
 5. **Never touch environment variables** (`GOOGLE_SERVICE_ACCOUNT`, `GOOGLE_SHEET_ID`,
    `OPENAI_API_KEY`) or their values **without asking first.**
