@@ -1,5 +1,6 @@
 const { google } = require('googleapis');
 const { resolveSheetId } = require('./_user');
+const { requirePost } = require('./_validate');
 
 
 // Writes the hidden onboarding marker to Control Panel Z1.
@@ -7,7 +8,7 @@ const { resolveSheetId } = require('./_user');
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (!requirePost(req, res)) return;
   try {
     const sheetId = await resolveSheetId(req);
     if (!sheetId) return res.status(404).json({ error: 'unknown user' });

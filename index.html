@@ -784,6 +784,9 @@
         });
         var result = await res.json();
         if (!result.success) { chip.dataset.checked = currentValue; alert('Failed to save. Try again.'); }
+        // the server flips whatever is in the sheet; if that differs from our optimistic
+        // guess (another device toggled first), reload so the card shows the truth
+        else if (typeof result.newValue === 'boolean' && result.newValue !== newValue) { loadApp(); }
       } catch (err) {
         chip.dataset.checked = currentValue;
         alert('Error: ' + err.message);

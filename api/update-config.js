@@ -1,5 +1,6 @@
 const { google } = require('googleapis');
 const { resolveSheetId } = require('./_user');
+const V = require('./_validate');
 
 
 // ── v28 SHEET STRUCTURE ──────────────────────────────────────
@@ -17,8 +18,7 @@ module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  if (req.method === 'OPTIONS') return res.status(200).end();
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  if (!V.requirePost(req, res)) return;
 
   try {
     const creds = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT);
@@ -30,10 +30,19 @@ module.exports = async (req, res) => {
     const sheetId = await resolveSheetId(req);
     if (!sheetId) return res.status(404).json({ error: 'unknown user' });
 
-    const { action, type, name, newName, note } = req.body;
-    if (!action || !type) {
-      return res.status(400).json({ error: 'Missing action or type' });
-    }
+    // ── input validation ──
+    const body = req.body || {};
+    const action  = body.action;
+    const type    = body.type;
+    const name    = V.textField(body.name, V.NAME_MAX);
+    const newName = V.textField(body.newName, V.NAME_MAX);
+    const note    = V.textField(body.note, V.NOTE_MAX);
+    if (!['add', 'replace', 'remove'].includes(action)) return res.status(400).json({ error: 'Unknown action' });
+    if (!V.isType(type))  return res.status(400).json({ error: 'Invalid type' });
+    if (name === null)    return res.status(400).json({ error: 'name too long (max ' + V.NAME_MAX + ')' });
+    if (newName === null) return res.status(400).json({ error: 'newName too long (max ' + V.NAME_MAX + ')' });
+    if (note === null)    return res.status(400).json({ error: 'note too long (max ' + V.NOTE_MAX + ')' });
+    if (action !== 'add' && !name) return res.status(400).json({ error: 'Missing name' });
 
     // Read Control Panel habit list — E6:H20 (row 6 header, rows 7-20 slots)
     const configRes = await sheets.spreadsheets.values.get({
