@@ -141,7 +141,7 @@
       <div class="rounded-3xl p-8 text-center" style="background:rgba(248,113,113,0.08);border:1px solid rgba(248,113,113,0.3);color:var(--bad-color)">
         <h2 class="text-xl font-semibold mb-2">Oops!</h2>
         <p id="error-message" style="color:var(--text-secondary)"></p>
-        <p class="text-xs mt-6" style="color:var(--text-muted)">Make sure your Google Sheet is shared with the service account.</p>
+        <button id="error-retry" onclick="retryLoad()" class="mt-6 font-semibold py-3 px-6 rounded-3xl text-sm tracking-wide title-font" style="background:var(--btn-bg);color:var(--btn-text);border:none;cursor:pointer">Try again</button>
       </div>
     </div>
 
@@ -392,6 +392,55 @@
       const s = q.toString();
       return s ? p + (p.includes('?') ? '&' : '?') + s : p;
     };
+
+    // ── ERROR MESSAGES ────────────────────────────────────
+    // Customers never see a Google API error or a stack message. The server's
+    // own text is passed through only for 400 and 429, which our endpoints use
+    // for deliberate, human-written messages (habit minimums, the daily
+    // coaching limit). Everything else gets a short friendly line and the
+    // technical detail goes to the console, where support can ask for it.
+    var ERR_GENERIC = 'Something went wrong on our side. Please try again in a moment.';
+    var ERR_OFFLINE = 'Could not reach the server. Check your connection and try again.';
+    var ERR_LINK    = 'This link is no longer valid. Please contact support to get a new one.';
+
+    // res is null when fetch itself threw (offline, DNS, blocked request).
+    function friendlyError(where, res, data, err) {
+      var detail = (err && (err.stack || err.message)) ||
+                   (data && data.error) ||
+                   (res && ('HTTP ' + res.status)) || 'unknown';
+      console.error('[habitally] ' + where + ':', detail);
+      if (!res) return (typeof navigator !== 'undefined' && navigator.onLine === false) ? ERR_OFFLINE : ERR_GENERIC;
+      if (res.status === 404) return ERR_LINK;
+      if ((res.status === 400 || res.status === 429) && data && data.error) return String(data.error).slice(0, 200);
+      return ERR_GENERIC;
+    }
+
+    // POST helper: never throws on a non-JSON body (an HTML error page used to
+    // surface as a raw JSON parse error in an alert).
+    async function postJson(path, body) {
+      var res = await fetch(api(path), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      var data = null;
+      try { data = await res.json(); } catch (e) { /* non-JSON body */ }
+      return { res: res, data: data };
+    }
+
+    function showError(message, showRetry) {
+      document.getElementById('loading').classList.add('hidden');
+      document.getElementById('app').classList.add('hidden');
+      document.getElementById('error-state').classList.remove('hidden');
+      document.getElementById('error-message').textContent = message;
+      var btn = document.getElementById('error-retry');
+      if (btn) btn.style.display = showRetry ? '' : 'none';
+    }
+
+    function retryLoad() {
+      document.getElementById('error-state').classList.add('hidden');
+      loadApp();
+    }
     // ── THEME ─────────────────────────────────────────────
     const savedTheme = localStorage.getItem('hbt-theme') || 'dark';
     if (savedTheme === 'light') document.documentElement.classList.add('light');
@@ -503,11 +552,11 @@
     async function loadApp() {
       try {
         const res = await fetch(api('/api/get-habits'));
-        const data = await res.json();
-        if (data.error) {
-          document.getElementById('loading').classList.add('hidden');
-          document.getElementById('error-state').classList.remove('hidden');
-          document.getElementById('error-message').textContent = data.error;
+        let data = null;
+        try { data = await res.json(); } catch (e) { /* non-JSON body */ }
+        if (!res.ok || !data || data.error) {
+          // an invalid link cannot be retried into working, so hide the button
+          showError(friendlyError('get-habits', res, data, null), res.status !== 404);
           return;
         }
         appData = data;
@@ -601,9 +650,7 @@
         renderCalendar(data);
 
       } catch (err) {
-        document.getElementById('loading').classList.add('hidden');
-        document.getElementById('error-state').classList.remove('hidden');
-        document.getElementById('error-message').textContent = err.message;
+        showError(friendlyError('get-habits', null, null, err), true);
       }
     }
 
@@ -777,19 +824,19 @@
         icon.textContent = newValue ? '\u2713' : '\u25CB';
       }
       try {
-        var res = await fetch(api('/api/toggle-habit'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sheetName, row, col, currentValue })
-        });
-        var result = await res.json();
-        if (!result.success) { chip.dataset.checked = currentValue; alert('Failed to save. Try again.'); }
+        var r = await postJson('/api/toggle-habit', { sheetName, row, col });
+        if (!r.res.ok || !r.data || !r.data.success) {
+          chip.dataset.checked = currentValue;
+          alert(friendlyError('toggle-habit', r.res, r.data, null));
+          loadApp(); // repaint the chip from the sheet, not from the failed guess
+        }
         // the server flips whatever is in the sheet; if that differs from our optimistic
         // guess (another device toggled first), reload so the card shows the truth
-        else if (typeof result.newValue === 'boolean' && result.newValue !== newValue) { loadApp(); }
+        else if (typeof r.data.newValue === 'boolean' && r.data.newValue !== newValue) { loadApp(); }
       } catch (err) {
         chip.dataset.checked = currentValue;
-        alert('Error: ' + err.message);
+        alert(friendlyError('toggle-habit', null, null, err));
+        loadApp();
       }
     }
 
@@ -853,15 +900,11 @@
       }
       closeFocusModal();
       try {
-        var res = await fetch(api('/api/update-focus'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ type, habitName })
-        });
-        var result = await res.json();
-        if (result.success) { loadApp(); }
+        var r = await postJson('/api/update-focus', { type, habitName });
+        if (r.res.ok && r.data && r.data.success) { loadApp(); }
+        else { alert(friendlyError('update-focus', r.res, r.data, null)); }
       } catch (err) {
-        alert('Failed to save: ' + err.message);
+        alert(friendlyError('update-focus', null, null, err));
       }
     }
 
@@ -872,20 +915,18 @@
       btn.textContent = 'Getting your coaching...';
       btn.disabled = true;
       try {
-        var res = await fetch(api('/api/get-coaching'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            weeklyPercent: appData ? appData.percent : 0,
-            streak: appData ? appData.streak : 0,
-            weakestHabit: appData ? appData.weakest : 'Unknown'
-          })
+        var r = await postJson('/api/get-coaching', {
+          weeklyPercent: appData ? appData.percent : 0,
+          streak: appData ? appData.streak : 0,
+          weakestHabit: appData ? appData.weakest : 'Unknown'
         });
-        var data = await res.json();
-        output.textContent = data.coaching || data.error;
+        // a 429 here is the daily-limit message, written for the user
+        output.textContent = (r.res.ok && r.data && r.data.coaching)
+          ? r.data.coaching
+          : friendlyError('get-coaching', r.res, r.data, null);
         output.classList.remove('hidden');
       } catch (err) {
-        output.textContent = 'Error: ' + err.message;
+        output.textContent = friendlyError('get-coaching', null, null, err);
         output.classList.remove('hidden');
       }
       btn.textContent = 'Get AI Coaching';
@@ -1035,22 +1076,18 @@
       btn.textContent = '...';
       btn.disabled = true;
       try {
-        var res = await fetch(api('/api/update-config'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action, type, name, newName: newName || undefined })
-        });
-        var result = await res.json();
-        if (result.success) {
+        var r = await postJson('/api/update-config', { action, type, name, newName: newName || undefined });
+        if (r.res.ok && r.data && r.data.success) {
           closeConfirmModal();
           loadApp();
         } else {
-          alert(result.error || 'Something went wrong');
+          // a 400 here is a habit-minimum or slot message, written for the user
+          alert(friendlyError('update-config', r.res, r.data, null));
           btn.textContent = action === 'remove' ? 'Remove' : 'Replace';
           btn.disabled = false;
         }
       } catch (err) {
-        alert('Error: ' + err.message);
+        alert(friendlyError('update-config', null, null, err));
         btn.textContent = action === 'remove' ? 'Remove' : 'Replace';
         btn.disabled = false;
       }
