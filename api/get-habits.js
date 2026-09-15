@@ -1,6 +1,7 @@
 const { google } = require('googleapis');
 const { resolveSheetId } = require('./_user');
 const { todayFrom } = require('./_date');
+const { serialToDate, isChecked, computeStreak } = require('./_streak');
 
 
 // ── v28 SHEET STRUCTURE ──────────────────────────────────────
@@ -21,20 +22,8 @@ const COL_GH_WEEKLY   = 17; // R
 const COL_WEAKEST     = 19; // T
 const COL_SIGNAL      = 20; // U
 
-// Google Sheets serial → local midnight Date
-function serialToDate(v) {
-  if (v === null || v === undefined || v === '') return null;
-  if (typeof v === 'number') {
-    const ud = new Date(Date.UTC(1899, 11, 30) + Math.round(v) * 86400000);
-    return new Date(ud.getUTCFullYear(), ud.getUTCMonth(), ud.getUTCDate());
-  }
-  const d = new Date(v);
-  if (isNaN(d)) return null;
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
-function isChecked(v) { return v === true || v === 'TRUE'; }
+// serialToDate / isChecked / computeStreak come from _streak.js so that
+// toggle-habit derives the streak from exactly the same rule.
 
 function toPercent(raw) {
   const n = typeof raw === 'number' ? raw : parseFloat(raw);
@@ -61,7 +50,7 @@ module.exports = async (req, res) => {
     const creds = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT);
     const auth = new google.auth.GoogleAuth({
       credentials: creds,
-      scopes: ['https://www.googleapis.com/auth/spreadsheets']
+      scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly']
     });
     const sheets = google.sheets({ version: 'v4', auth });
     const sheetId = await resolveSheetId(req);
@@ -271,30 +260,9 @@ module.exports = async (req, res) => {
     });
 
     // ── 8. STREAK (past days only, today never counts) ───────
-    const allDayRows = [];
-    for (let i = weekStartRows.length - 1; i >= 0; i--) {
-      for (let d = 6; d >= 0; d--) {
-        const r = weekStartRows[i] + d;
-        const rowDate = monthData[r] ? serialToDate(monthData[r][1]) : null;
-        if (!rowDate || rowDate > today) continue;
-        allDayRows.push({ r, rowDate });
-      }
-    }
-
-    let streak = 0;
-    for (let i = 0; i < allDayRows.length; i++) {
-      const { r, rowDate } = allDayRows[i];
-      if (rowDate.getTime() === today.getTime()) continue;
-
-      let goodDone = 0;
-      activeGood.forEach(h => {
-        if (monthData[r] && isChecked(monthData[r][h.colIndex])) goodDone++;
-      });
-      const goodPct = activeGood.length > 0 ? goodDone / activeGood.length : 1;
-
-      if (goodPct >= 0.66) streak++;
-      else break;
-    }
+    // Derived for the response only. toggle-habit mirrors it into
+    // Dashboard C7 when a tick actually changes it.
+    const streak = computeStreak(monthData, activeGood, today);
 
     const weakest   = monthData[weekRow] && monthData[weekRow][COL_WEAKEST]
       ? String(monthData[weekRow][COL_WEAKEST]).trim() : 'None';
@@ -387,16 +355,6 @@ module.exports = async (req, res) => {
       ? weekStartDateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
       : 'N/A';
 
-    try {
-      await sheets.spreadsheets.values.update({
-        spreadsheetId: sheetId,
-        range: "'⚡ Dashboard'!C7",
-        valueInputOption: 'RAW',
-        requestBody: { values: [[streak]] }
-      });
-    } catch (e) {
-      console.error('Streak write failed:', e.message);
-    }
 
     res.status(200).json({
       month:        monthName,

@@ -17,9 +17,10 @@ Guidance for Claude (and humans) working in this repo.
 | `_user.js` | **read** (Customers sheet) | Resolves `?user=` + `?t=` to the customer's spreadsheet ID. |
 | `_date.js` | — | `todayFrom(req)`: the client's `?date=` or server midnight. |
 | `_validate.js` | **read** (Control Panel) | Shared input validation for the write endpoints. |
+| `_streak.js` | — | The streak rule, shared by `get-habits` and `toggle-habit`. |
 | `get-habits.js` | **read** (readonly scope) | Reads the Control Panel + habit tabs, returns habits/config. |
 | `get-coaching.js` | **none** | No sheet access — takes stats from the request body, calls OpenAI (`OPENAI_API_KEY`), returns a coaching note. |
-| `toggle-habit.js` | **write** | Toggles a single habit cell (checkbox) for a day. |
+| `toggle-habit.js` | **write** | Toggles a habit cell for a day, then mirrors the new streak into Dashboard C7. |
 | `set-onboarded.js` | **write** | Writes the hidden onboarding marker (Control Panel Z1). |
 | `update-focus.js` | **write** | Updates the current focus. |
 | `update-config.js` | **write** | Updates Control Panel configuration. |

@@ -1,11 +1,23 @@
 const { google } = require('googleapis');
 const { resolveSheetId } = require('./_user');
+const { todayFrom } = require('./_date');
+const { isChecked, activeGoodHabits, computeStreak } = require('./_streak');
 const V = require('./_validate');
 
-// Flips one habit checkbox for one day. The current value is read from the
-// sheet, never trusted from the client, so two devices toggling the same
-// cell cannot desynchronise it. Only day rows in the C..P band of one of
-// the twelve month tabs can be written.
+// Flips one habit checkbox for one day, then mirrors the new streak into
+// Dashboard C7. The streak write used to live in get-habits, which forced
+// write scope onto a read-only endpoint; a tick is the only thing that can
+// change the value, so this is where it belongs.
+//
+// The current value is read from the sheet, never trusted from the client,
+// so two devices toggling the same cell cannot desynchronise it. Only day
+// rows in the C..P band of one of the twelve month tabs can be written.
+
+const MONTHS = ["January","February","March","April","May","June",
+                "July","August","September","October","November","December"];
+const GRID = '!A1:P46';
+const CP_RANGE = "'⚙️ Control Panel'!E6:H20";
+const STREAK_CELL = "'⚡ Dashboard'!C7";
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -28,16 +40,31 @@ module.exports = async (req, res) => {
     const sheetId = await resolveSheetId(req);
     if (!sheetId) return res.status(404).json({ error: 'unknown user' });
 
-    const colLetter = String.fromCharCode(64 + col);
-    const range = `'${sheetName}'!${colLetter}${row}`;
+    // The streak is always about the month that contains today, which is
+    // normally the tab being ticked. Ask for both only when they differ.
+    const today = todayFrom(req);
+    const currentMonth = MONTHS[today.getMonth()];
+    const ranges = ["'" + sheetName + "'" + GRID];
+    if (currentMonth !== sheetName) ranges.push("'" + currentMonth + "'" + GRID);
+    ranges.push(CP_RANGE);
 
-    const cur = await sheets.spreadsheets.values.get({
+    const batch = await sheets.spreadsheets.values.batchGet({
       spreadsheetId: sheetId,
-      range,
+      ranges,
       valueRenderOption: 'UNFORMATTED_VALUE'
     });
-    const currentValue = V.isChecked(cur.data.values && cur.data.values[0] && cur.data.values[0][0]);
+    const vr = batch.data.valueRanges || [];
+    const targetGrid = (vr[0] && vr[0].values) || [];
+    const monthGrid = currentMonth === sheetName
+      ? targetGrid
+      : ((vr[1] && vr[1].values) || []);
+    const cpRows = (vr[vr.length - 1] && vr[vr.length - 1].values) || [];
+
+    // ── 1. flip the cell ──
+    const currentValue = isChecked((targetGrid[row - 1] || [])[col - 1]);
     const newValue = !currentValue;
+    const colLetter = String.fromCharCode(64 + col);
+    const range = "'" + sheetName + "'!" + colLetter + row;
 
     await sheets.spreadsheets.values.update({
       spreadsheetId: sheetId,
@@ -45,7 +72,31 @@ module.exports = async (req, res) => {
       valueInputOption: 'USER_ENTERED',
       requestBody: { values: [[newValue]] }
     });
-    res.status(200).json({ success: true, newValue });
+
+    // ── 2. mirror the streak into the Dashboard ──
+    // Best effort: the tick is already saved, and a customer who deleted the
+    // Dashboard tab should still be able to tick habits.
+    let streak = null;
+    try {
+      if (monthGrid.length) {
+        if (monthGrid === targetGrid) {
+          // the tick lands in the month we are about to measure
+          if (!monthGrid[row - 1]) monthGrid[row - 1] = [];
+          monthGrid[row - 1][col - 1] = newValue;
+        }
+        streak = computeStreak(monthGrid, activeGoodHabits(cpRows), today);
+        await sheets.spreadsheets.values.update({
+          spreadsheetId: sheetId,
+          range: STREAK_CELL,
+          valueInputOption: 'RAW',
+          requestBody: { values: [[streak]] }
+        });
+      }
+    } catch (e) {
+      console.error('Streak write failed:', e.message);
+    }
+
+    res.status(200).json({ success: true, newValue, streak });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, error: err.message });
