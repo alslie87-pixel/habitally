@@ -58,11 +58,10 @@ function yearState(sheetYear, today) {
 }
 
 // Shown to the customer by index.html, stats.js and toggle-habit, so the
-// wording lives in one place. Norwegian by request; the rest of the app is
-// still English (checklist item 3.1).
+// wording lives in one place.
 function outOfYearMessage(currentYear) {
-  return 'Et nytt år har begynt. Arket ditt gjøres klart for ' + currentYear +
-         ' — ta kontakt hvis det ikke skjer automatisk.';
+  return 'A new year has begun. Your sheet is being prepared for ' + currentYear +
+         ' — get in touch if it doesn\u2019t update automatically.';
 }
 
 // The payload the read endpoints return instead of their aggregates.
