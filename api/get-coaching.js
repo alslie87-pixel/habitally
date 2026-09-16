@@ -7,14 +7,16 @@ const { checkDailyLimit } = require('./_ratelimit');
 // Control Panel B26 ("AI COACHING PROMPT — Used by the web app").
 // Falls back to a generic default if the cell is empty.
 //
-// Input is validated before anything is spent: weeklyPercent and streak
-// must be numbers 0-100, weakestHabit at most 60 characters with control
-// characters removed. Each user gets MAX_PER_DAY calls per day, counted in
-// memory (see _ratelimit.js for what that does and does not guarantee).
+// Input is validated before anything is spent: weeklyPercent must be a
+// number 0-100, streak a number of days 0-STREAK_MAX, weakestHabit at most
+// 60 characters with control characters removed. Each user gets MAX_PER_DAY
+// calls per day, counted in memory (see _ratelimit.js for what that does and
+// does not guarantee).
 
 const PROMPT_CELL = "'⚙️ Control Panel'!B26";
 const MAX_PER_DAY = 5;
 const HABIT_MAX = 60;
+const STREAK_MAX = 366;  // a full leap year of consecutive days
 
 const DEFAULT_PROMPT =
   'Give me a coaching note: ' +
@@ -27,10 +29,25 @@ const DEFAULT_PROMPT =
 const LIMIT_MESSAGE =
   "You've used today's " + MAX_PER_DAY + ' coaching notes. Come back tomorrow for a fresh one.';
 
-// number or numeric string within [0, 100] -> number, else null
+// number or non-empty numeric string -> number, else NaN
+function toNumber(v) {
+  if (typeof v === 'number') return v;
+  if (typeof v === 'string' && v.trim() !== '') return Number(v);
+  return NaN;
+}
+
+// within [0, 100] -> number, else null
 function pct(v) {
-  const n = typeof v === 'number' ? v : (typeof v === 'string' && v.trim() !== '' ? Number(v) : NaN);
+  const n = toNumber(v);
   return Number.isFinite(n) && n >= 0 && n <= 100 ? n : null;
+}
+
+// within [0, STREAK_MAX] -> number, else null. Deliberately not pct(): a
+// streak is a count of days, not a percentage, and a customer who keeps
+// going past 100 days should not be told their own streak is invalid.
+function streakDays(v) {
+  const n = toNumber(v);
+  return Number.isFinite(n) && n >= 0 && n <= STREAK_MAX ? n : null;
 }
 
 // trimmed, control characters (Unicode Cc) replaced, max HABIT_MAX -> string, else null
@@ -49,10 +66,10 @@ module.exports = async (req, res) => {
     // ── 1. validate input (nothing spent yet) ──
     const body = req.body || {};
     const weeklyPercent = pct(body.weeklyPercent);
-    const streak = pct(body.streak);
+    const streak = streakDays(body.streak);
     const weakestHabit = habitText(body.weakestHabit);
     if (weeklyPercent === null) return res.status(400).json({ error: 'weeklyPercent must be a number 0-100' });
-    if (streak === null)        return res.status(400).json({ error: 'streak must be a number 0-100' });
+    if (streak === null)        return res.status(400).json({ error: 'streak must be a number of days 0-' + STREAK_MAX });
     if (weakestHabit === null)  return res.status(400).json({ error: 'weakestHabit too long (max ' + HABIT_MAX + ')' });
 
     // ── 2. resolve user (404 for unknown) ──
