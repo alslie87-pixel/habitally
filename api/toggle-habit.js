@@ -2,6 +2,7 @@ const { google } = require('googleapis');
 const { resolveSheetId } = require('./_user');
 const { todayFrom } = require('./_date');
 const { isChecked, activeGoodHabits, computeStreak } = require('./_streak');
+const { sheetYearFrom, yearState, outOfYearMessage } = require('./_year');
 const V = require('./_validate');
 
 // Flips one habit checkbox for one day, then mirrors the new streak into
@@ -59,6 +60,13 @@ module.exports = async (req, res) => {
       ? targetGrid
       : ((vr[1] && vr[1].values) || []);
     const cpRows = (vr[vr.length - 1] && vr[vr.length - 1].values) || [];
+
+    // A tick on last year's grid builds up data that disappears when the
+    // sheet is rolled over, so refuse it and say why.
+    const year = yearState(sheetYearFrom(targetGrid), today);
+    if (year.outOfYear) {
+      return res.status(409).json({ success: false, error: outOfYearMessage(year.currentYear) });
+    }
 
     // ── 1. flip the cell ──
     const currentValue = isChecked((targetGrid[row - 1] || [])[col - 1]);

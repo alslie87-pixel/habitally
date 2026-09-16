@@ -18,6 +18,7 @@ Guidance for Claude (and humans) working in this repo.
 | `_date.js` | — | `todayFrom(req)`: the client's `?date=` or server midnight. |
 | `_validate.js` | **read** (Control Panel) | Shared input validation for the write endpoints. |
 | `_streak.js` | — | The streak rule, shared by `get-habits` and `toggle-habit`. |
+| `_year.js` | — | Which year the sheet covers; gates the app after new year. |
 | `get-habits.js` | **read** (readonly scope) | Reads the Control Panel + habit tabs, returns habits/config. |
 | `get-coaching.js` | **none** | No sheet access — takes stats from the request body, calls OpenAI (`OPENAI_API_KEY`), returns a coaching note. |
 | `toggle-habit.js` | **write** | Toggles a habit cell for a day, then mirrors the new streak into Dashboard C7. |

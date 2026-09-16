@@ -2,6 +2,7 @@ const { google } = require('googleapis');
 const { resolveSheetId } = require('./_user');
 const { todayFrom } = require('./_date');
 const { serialToDate, isChecked, computeStreak } = require('./_streak');
+const { sheetYearFrom, yearState, outOfYearPayload } = require('./_year');
 
 
 // ── v28 SHEET STRUCTURE ──────────────────────────────────────
@@ -107,6 +108,14 @@ module.exports = async (req, res) => {
       valueRenderOption: 'UNFORMATTED_VALUE'
     });
     const monthData = monthRes.data.values || [];
+
+    // ── YEAR GATE ────────────────────────────────────────────
+    // On 1 January the month tabs still hold last year's dates. Every
+    // number below (week selection, streak, percentages, graveyard) would
+    // be derived from a year that is over, so stop here and let the app
+    // explain instead.
+    const year = yearState(sheetYearFrom(monthData), today);
+    if (year.outOfYear) return res.status(200).json(outOfYearPayload(year));
 
     // ── 3. FIND CURRENT WEEK ─────────────────────────────────
     const weekStartRows = [1, 10, 19, 28, 37]; // 0-based array rows (sheet rows 2,11,20,29,38)
