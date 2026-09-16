@@ -1,6 +1,7 @@
 const { google } = require('googleapis');
 const { resolveSheetId } = require('./_user');
 const { todayFrom, isoLocal } = require('./_date');
+const { sheetYearFromGrids, yearState, outOfYearPayload } = require('./_year');
 
 
 // v28 stats endpoint — one batchGet, everything the stats page needs.
@@ -53,6 +54,11 @@ module.exports = async (req, res) => {
 
     const today = todayFrom(req); // client's local date (?date=YYYY-MM-DD) or server midnight
     const curMonth = today.getMonth();
+
+    // The Progress page is nothing but aggregates, so an out-of-year sheet
+    // has nothing honest to show.
+    const year = yearState(sheetYearFromGrids(monthGrids), today);
+    if (year.outOfYear) return res.status(200).json(outOfYearPayload(year));
 
     // ── habits (position-based, like get-habits) ─────────────
     const habits = [];

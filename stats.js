@@ -199,6 +199,14 @@
       panel.innerHTML = '<div class="hsx-page"><div class="hsx-back">← back</div><div style="padding:30px;text-align:center;color:var(--hxT3);font:600 12px Manrope">Loading…</div></div>';
       bindBack(); load().then(() => render()); return;
     }
+    if (S.outOfYear) {
+      panel.innerHTML = '<div class="hsx-page"><div class="hsx-back">← back</div>' +
+        '<div style="padding:40px 24px;text-align:center">' +
+        '<div style="font-size:34px;margin-bottom:14px">🗓️</div>' +
+        '<div style="font:500 13px/1.7 Manrope;color:var(--hxT2)">' + esc(S.message) + '</div>' +
+        '</div></div>';
+      bindBack(); return;
+    }
     const now = new Date();
     const curM = now.getMonth();
     const yr = now.getFullYear();
@@ -557,7 +565,7 @@
         const r = await fetch(apiUrl(API + '/get-stats'));
         let data = null;
         try { data = await r.json(); } catch (e) { /* non-JSON body */ }
-        if (!r.ok || !data || data.error || !Array.isArray(data.months)) {
+        if (!r.ok || !data || data.error || (!data.outOfYear && !Array.isArray(data.months))) {
           loadError = (data && data.error) ? String(data.error) : ('HTTP ' + r.status);
           console.error('stats load failed', loadError);
           S = null;

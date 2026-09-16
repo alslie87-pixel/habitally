@@ -145,6 +145,14 @@
       </div>
     </div>
 
+    <div id="year-state" class="hidden">
+      <div class="rounded-3xl p-8 text-center" style="background:var(--bg-card-inner);border:1px solid var(--border-default)">
+        <div class="text-4xl mb-4">🗓️</div>
+        <p id="year-message" style="color:var(--text-secondary);line-height:1.7"></p>
+        <button onclick="retryLoad()" class="mt-6 font-semibold py-3 px-6 rounded-3xl text-sm tracking-wide title-font" style="background:var(--btn-bg);color:var(--btn-text);border:none;cursor:pointer">Prøv igjen</button>
+      </div>
+    </div>
+
     <div id="app" class="hidden">
 
       <!-- HEADER -->
@@ -411,7 +419,7 @@
       console.error('[habitally] ' + where + ':', detail);
       if (!res) return (typeof navigator !== 'undefined' && navigator.onLine === false) ? ERR_OFFLINE : ERR_GENERIC;
       if (res.status === 404) return ERR_LINK;
-      if ((res.status === 400 || res.status === 429) && data && data.error) return String(data.error).slice(0, 200);
+      if ((res.status === 400 || res.status === 409 || res.status === 429) && data && data.error) return String(data.error).slice(0, 200);
       return ERR_GENERIC;
     }
 
@@ -428,9 +436,18 @@
       return { res: res, data: data };
     }
 
+    function showYearState(message) {
+      document.getElementById('loading').classList.add('hidden');
+      document.getElementById('app').classList.add('hidden');
+      document.getElementById('error-state').classList.add('hidden');
+      document.getElementById('year-state').classList.remove('hidden');
+      document.getElementById('year-message').textContent = message;
+    }
+
     function showError(message, showRetry) {
       document.getElementById('loading').classList.add('hidden');
       document.getElementById('app').classList.add('hidden');
+      document.getElementById('year-state').classList.add('hidden');
       document.getElementById('error-state').classList.remove('hidden');
       document.getElementById('error-message').textContent = message;
       var btn = document.getElementById('error-retry');
@@ -439,6 +456,7 @@
 
     function retryLoad() {
       document.getElementById('error-state').classList.add('hidden');
+      document.getElementById('year-state').classList.add('hidden');
       loadApp();
     }
     // ── THEME ─────────────────────────────────────────────
@@ -502,7 +520,7 @@
 
     function getDailyQuote() {
       const now = new Date();
-      const start = new Date(2026, 0, 1);
+      const start = new Date(now.getFullYear(), 0, 1);
       const dayOfYear = Math.floor((now - start) / 86400000);
       return dailyQuotes[dayOfYear % dailyQuotes.length];
     }
@@ -559,6 +577,7 @@
           showError(friendlyError('get-habits', res, data, null), res.status !== 404);
           return;
         }
+        if (data.outOfYear) { showYearState(data.message); return; }
         appData = data;
         document.getElementById('loading').classList.add('hidden');
         document.getElementById('app').classList.remove('hidden');
