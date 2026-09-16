@@ -14,6 +14,8 @@ const MONTHS = ["January","February","March","April","May","June",
 
 function cpRowToMonthCol(sheetRow) { return sheetRow - 7 + 2; } // 0-based col index
 
+const MIN_ACTIVE = 3; // per type; matches the onboarding rule "min 3 + 3"
+
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -113,6 +115,14 @@ module.exports = async (req, res) => {
       if (targetRowIdx === -1) return res.status(404).json({ error: 'Habit not found' });
       const rowNote   = (rows[targetRowIdx][3] || '').toString().toLowerCase();
       const oldStatus = (rows[targetRowIdx][2] || '').toString().trim().toLowerCase();
+      // Keep at least MIN_ACTIVE active habits of each type. Only removing an
+      // *active* habit lowers the count; retiring a conquered one does not.
+      if (oldStatus === 'active' && activeCount - 1 < MIN_ACTIVE) {
+        const label = type === 'bad' ? 'habits to avoid' : 'habits to build';
+        return res.status(400).json({
+          error: 'You need at least ' + MIN_ACTIVE + ' ' + label + '. Add a replacement first, then remove this one.'
+        });
+      }
       const newStatus = type === 'bad'
         ? ((oldStatus === 'conquered' || rowNote.includes('conquered')) ? 'ghost' : 'empty')
         : 'retired';
