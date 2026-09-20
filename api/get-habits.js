@@ -327,17 +327,41 @@ module.exports = async (req, res) => {
     const best  = sortedBad.length > 0 ? sortedBad[sortedBad.length - 1] : null;
 
     // ── 11. NEXT TO FALL ─────────────────────────────────────
-    // The active bad habit closest to this month's trophy that has not
-    // already won it. A habit in the trophy case is done for the month and
-    // must not also be shown as the next one to fall — that double billing
-    // was the bug. All of them won it: show nothing.
+    // The spotlight goes to a habit with nothing in the trophy case yet:
+    // no month won anywhere this year. One that has already earned a cup
+    // does not need the focus, and one conquered THIS month is covered by
+    // the same rule, since that month is in the case.
+    //
+    // Only eligibility changes here. The ranking is the same as before —
+    // most days avoided this month takes the slot — and trophy awarding is
+    // untouched: a habit that loses the focus still earns every month it
+    // clears, this one included.
+    //
+    // Eligibility reads won months rather than the count field, because the
+    // case renders months. The two are the same set anyway: every month under
+    // its threshold caps the year at 310 ticks, short of the 328 the year
+    // trophy needs, so the count cannot be non-zero with no month won.
     const monthBar = trophyScan.trophies.thresholds.months[today.getMonth()];
-    let nextToFall = null, nextToFallDays = 0;
-    activeBad.forEach(h => {
-      if (conqueredThisMonth.indexOf(h.name) !== -1) return;
-      const c = badTicks[h.colIndex] || 0;
-      if (nextToFall === null || c > nextToFallDays) { nextToFallDays = c; nextToFall = h.name; }
+    const hasTrophy = {};
+    trophyScan.trophies.habits.forEach(h => {
+      if (h.months.some(m => m.won)) hasTrophy[h.name] = true;
     });
+
+    const closestOf = list => {
+      let name = null, ticks = 0;
+      list.forEach(h => {
+        const c = badTicks[h.colIndex] || 0;
+        if (name === null || c > ticks) { ticks = c; name = h.name; }
+      });
+      return { name, ticks };
+    };
+
+    // Once every active habit has a cup there is no untrophied one left to
+    // point at, so fall back to the overall closest rather than go blank.
+    const untrophied = activeBad.filter(h => !hasTrophy[h.name]);
+    const pick = closestOf(untrophied.length ? untrophied : activeBad);
+    const nextToFall = pick.name;
+    const nextToFallDays = pick.ticks;
     const daysToKill = Math.max(0, monthBar - nextToFallDays);
 
     // ── 13. WEEK START + STREAK WRITE ────────────────────────
