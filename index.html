@@ -118,22 +118,19 @@
     html.light .day-card.today { box-shadow: 0 0 20px rgba(232,132,154,0.1); }
     .calendar-scroll { scrollbar-width: none; }
     body { overscroll-behavior-y: none; }
-    .th-conquered-card { background: var(--bg-card); border-color: var(--conquered-border); }
-    .tc-row { border-top: 1px solid var(--border-default); padding: 14px 0 12px; }
-    .tc-row:first-child { border-top: none; padding-top: 2px; }
-    .tc-name { font-size: 13px; font-weight: 600; color: var(--text-primary); }
-    .tc-count { font-size: 10px; color: var(--text-muted); letter-spacing: .04em; }
-    .tc-months { display: grid; grid-template-columns: repeat(12, 1fr); gap: 3px; margin: 8px 0 0; }
-    .tc-cell { aspect-ratio: 1; border-radius: 3px; background: var(--ntf-empty); }
-    .tc-cell.won { background: var(--accent); }
-    .tc-cell.now { box-shadow: inset 0 0 0 1px var(--accent-text); }
-    .tc-labels { display: grid; grid-template-columns: repeat(12, 1fr); gap: 3px; margin-top: 4px; }
-    .tc-label { font-size: 8px; text-align: center; color: var(--text-muted); letter-spacing: -.02em; }
-    .tc-awards { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
-    .tc-award { font-size: 9px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase;
-                padding: 3px 8px; border-radius: 100px; border: 1px solid var(--accent);
-                color: var(--accent-text); }
-    .tc-award.year { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .trophycase { background: var(--bg-card); border: 1px solid var(--conquered-border); border-radius: 16px; padding: 22px 18px; }
+    .trophycase.is-empty { display: none; }
+    .tc-title { font-size: 15px; font-weight: 600; color: var(--text-primary); }
+    .tc-sub { font-size: 11.5px; color: var(--text-muted); margin-top: 2px; margin-bottom: 16px; }
+    .tc-wall { display: grid; grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); gap: 10px; }
+    .tc-tile { display: flex; flex-direction: column; align-items: center; gap: 7px;
+               padding: 14px 6px 12px; border: 1px solid var(--border-default); border-radius: 12px; }
+    .tc-cup { width: 50px; height: 50px; display: block; }
+    .tc-name { font-size: 11.5px; font-weight: 600; color: var(--text-primary); text-align: center; line-height: 1.2; }
+    .tc-when { font-size: 10px; color: var(--text-muted); }
+    /* the cup itself is fixed gold in both themes; only its glow is dimmed */
+    .tglow { opacity: .85; }
+    html.light .tglow { opacity: .18; }
     .th-conquered-item { background: var(--bg-card-inner); border-color: var(--border-default); }
     .th-conquered-pct { color: var(--accent-text); }
     .th-divider { background: var(--border-default); }
@@ -150,6 +147,32 @@
   </style>
 </head>
 <body class="min-h-screen p-4 md:p-6">
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+    <linearGradient id="tgGold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#F6E2AC"/><stop offset=".5" stop-color="#D9B26A"/><stop offset="1" stop-color="#9A7534"/>
+    </linearGradient>
+    <radialGradient id="tgGlow" cx="50%" cy="45%" r="55%">
+      <stop offset="0" stop-color="#D9B26A" stop-opacity=".5"/><stop offset="1" stop-color="#D9B26A" stop-opacity="0"/>
+    </radialGradient>
+    <symbol id="trophyGold" viewBox="0 0 72 72">
+      <circle class="tglow" cx="36" cy="28" r="30" fill="url(#tgGlow)"/>
+      <ellipse cx="36" cy="67" rx="21" ry="3" fill="#8A6A2E" opacity=".2"/>
+      <ellipse cx="36" cy="14" rx="17" ry="4.5" fill="#3A2A12"/>
+      <path d="M19 14 C19 33 27 45 36 45 C45 45 53 33 53 14 Z" fill="url(#tgGold)" stroke="#9A7534" stroke-width="1" stroke-opacity=".55"/>
+      <ellipse cx="36" cy="14" rx="17" ry="4.5" fill="#F6E2AC"/>
+      <ellipse cx="36" cy="13.6" rx="12.5" ry="2.8" fill="#3A2A12"/>
+      <path d="M27 17 C24.5 27 27 36 31.5 42 C29 35 28 26 30.5 17 Z" fill="#ffffff" opacity=".18"/>
+      <path d="M36 21.5 L37.4 25.2 L41.3 25.3 L38.2 27.7 L39.2 31.5 L36 29.3 L32.8 31.5 L33.8 27.7 L30.7 25.3 L34.6 25.2 Z" fill="#FFF7E6" opacity=".95"/>
+      <path d="M19 17 C6 17 6 35 21 34" fill="none" stroke="#C99A4A" stroke-width="4" stroke-linecap="round"/>
+      <path d="M53 17 C66 17 66 35 51 34" fill="none" stroke="#C99A4A" stroke-width="4" stroke-linecap="round"/>
+      <path d="M33 45 H39 L38 51 H34 Z" fill="url(#tgGold)"/>
+      <rect x="30" y="51" width="12" height="5" rx="1" fill="#8A6A2E"/>
+      <rect x="23" y="55" width="26" height="5" rx="2" fill="url(#tgGold)"/>
+      <rect x="23" y="55" width="26" height="1.6" rx="1" fill="#F6E2AC" opacity=".6"/>
+      <rect x="19" y="59" width="34" height="6.5" rx="3" fill="#6E5324"/>
+      <rect x="19" y="59" width="34" height="1.6" rx="1" fill="#D9B26A" opacity=".55"/>
+    </symbol>
+  </defs></svg>
   <div class="max-w-5xl w-full mx-auto">
     <div id="loading" class="hidden"></div>
     <div id="error-state" class="hidden">
@@ -328,13 +351,11 @@
       </div>
 
       <!-- CONQUERED -->
-      <div id="graveyard-section" class="hidden mb-5">
-        <div class="card th-conquered-card border rounded-3xl p-6 text-center">
-          <div class="text-sm font-semibold tracking-wide mb-1" style="color:var(--text-secondary)">Trophy Case</div>
-          <div id="graveyard-sub" class="text-[9px] mb-4" style="color:var(--text-muted)"></div>
-          <div id="graveyard-list" class="text-left"></div>
-        </div>
-      </div>
+      <section id="trophy-case" class="trophycase is-empty mb-5">
+        <div class="tc-title">Trophy Case</div>
+        <div class="tc-sub">Your collection so far</div>
+        <div id="tc-wall" class="tc-wall"></div>
+      </section>
 
       <!-- AI COACHING -->
       <div class="mt-6">
@@ -449,6 +470,12 @@
       var data = null;
       try { data = await res.json(); } catch (e) { /* non-JSON body */ }
       return { res: res, data: data };
+    }
+
+    function escapeHtml(v) {
+      return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
     }
 
     function showYearState(message) {
@@ -689,41 +716,34 @@
         // Good habits overview (default view)
         renderOverviewList(data.goodHabitStats || [], 'good');
 
-        // Trophy case. One row per habit that has won something: a strip of
-        // twelve month cells, then the season and year awards it earned.
-        // Hidden entirely until the first trophy.
-        const tcSection = document.getElementById('graveyard-section');
-        const tcWinners = ((data.trophies && data.trophies.habits) || []).filter(function (h) { return h.count > 0; });
-        if (tcWinners.length > 0) {
-          const monthInitials = ['J','F','M','A','M','J','J','A','S','O','N','D'];
-          const monthFull = ['January','February','March','April','May','June',
-                             'July','August','September','October','November','December'];
-          const nowMonth = new Date().getMonth();
-          tcSection.classList.remove('hidden');
-          document.getElementById('graveyard-sub').textContent =
-            'A trophy for every month you stayed under the line';
-          document.getElementById('graveyard-list').innerHTML = tcWinners.map(function (h) {
-            const cells = h.months.map(function (m) {
-              return '<div class="tc-cell' + (m.won ? ' won' : '') + (m.m === nowMonth ? ' now' : '') +
-                     '" title="' + monthFull[m.m] + ': ' + m.ticks + ' / ' + m.threshold + '"></div>';
-            }).join('');
-            const labels = monthInitials.map(function (x) { return '<div class="tc-label">' + x + '</div>'; }).join('');
-            const awards = h.seasons.filter(function (sn) { return sn.won; })
-              .map(function (sn) { return '<span class="tc-award">' + sn.label + '</span>'; }).join('');
-            const yearAward = h.year.won ? '<span class="tc-award year">' + data.trophies.year + '</span>' : '';
-            const n = h.count;
-            return '<div class="tc-row">' +
-              '<div class="flex items-baseline justify-between gap-3">' +
-                '<div class="tc-name">' + h.name + '</div>' +
-                '<div class="tc-count">' + n + (n === 1 ? ' trophy' : ' trophies') + '</div>' +
-              '</div>' +
-              '<div class="tc-months">' + cells + '</div>' +
-              '<div class="tc-labels">' + labels + '</div>' +
-              (awards || yearAward ? '<div class="tc-awards">' + awards + yearAward + '</div>' : '') +
+        // Trophy case: one gold tile per month trophy actually won. Nothing
+        // unwon is ever drawn, and the whole section stays out of the page
+        // until the first trophy lands. Season and year trophies are not
+        // shown here — this card is the monthly collection.
+        const tcSection = document.getElementById('trophy-case');
+        const tcMonths = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        const tcWon = [];
+        ((data.trophies && data.trophies.habits) || []).forEach(function (h) {
+          (h.months || []).forEach(function (m) {
+            if (m.won) tcWon.push({ name: h.name, m: m.m, when: tcMonths[m.m] });
+          });
+        });
+        tcWon.sort(function (a, b) {
+          return a.m - b.m || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+        });
+
+        if (tcWon.length === 0) {
+          tcSection.classList.add('is-empty');
+          document.getElementById('tc-wall').innerHTML = '';
+        } else {
+          tcSection.classList.remove('is-empty');
+          document.getElementById('tc-wall').innerHTML = tcWon.map(function (t) {
+            return '<div class="tc-tile">' +
+              '<svg class="tc-cup" aria-hidden="true"><use href="#trophyGold"/></svg>' +
+              '<div class="tc-name">' + escapeHtml(t.name) + '</div>' +
+              '<div class="tc-when">' + t.when + '</div>' +
               '</div>';
           }).join('');
-        } else {
-          tcSection.classList.add('hidden');
         }
 
         // Calendar
