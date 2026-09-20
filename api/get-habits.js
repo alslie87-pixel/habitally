@@ -4,6 +4,7 @@ const { todayFrom } = require('./_date');
 const { serialToDate, isChecked, computeStreakAcrossYear, countFocusTicks,
         FOCUS_WINDOW_DAYS } = require('./_streak');
 const { sheetYearFromGrids, yearState, outOfYearPayload } = require('./_year');
+const { computeTrophies, monthTicks, elapsedThisMonth } = require('./_trophies');
 
 
 // ── v28 SHEET STRUCTURE ──────────────────────────────────────
@@ -104,7 +105,6 @@ module.exports = async (req, res) => {
 
     const activeBad    = badHabits.filter(h => h.status === 'active');
     const activeGood   = goodHabits.filter(h => h.status === 'active');
-    const conqueredBad = badHabits.filter(h => h.status === 'conquered');
 
     // ── 2. FOCUS HABITS ──────────────────────────────────────
     // C20/C21 hold a habit NAME as free text. update-focus only validates it
@@ -124,7 +124,7 @@ module.exports = async (req, res) => {
 
     // ── YEAR GATE ────────────────────────────────────────────
     // On 1 January the month tabs still hold last year's dates. Every
-    // number below (week selection, streak, percentages, graveyard) would
+    // number below (week selection, streak, percentages, trophies) would
     // be derived from a year that is over, so stop here and let the app
     // explain instead.
     const year = yearState(sheetYearFromGrids(monthGrids), today);
@@ -296,81 +296,49 @@ module.exports = async (req, res) => {
     const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
     const daysElapsed  = Math.floor((today - firstOfMonth) / 86400000) + 1;
 
-    let totalDays = 0;
-    for (let i = 0; i < weekStartRows.length; i++) {
-      const dv = monthData[weekStartRows[i]] ? serialToDate(monthData[weekStartRows[i]][1]) : null;
-      if (dv && dv.getFullYear() >= 2026 && dv <= today) {
-        for (let dd = 0; dd < 7; dd++) {
-          const cd = new Date(dv);
-          cd.setDate(cd.getDate() + dd);
-          if (cd <= today) totalDays++;
-        }
-      }
-    }
+    // Calendar days of this month so far. The month tab's week 1 reaches
+    // back into the previous month, so the tab's row count is not the
+    // month's day count.
+    const totalDays = elapsedThisMonth(today);
 
-    // ── 10. ROW 46 STATS (monthly counts per habit) ─────────
-    const row46 = monthData[45] || [];
-    const countOf = h => {
-      const v = row46[h.colIndex];
-      const n = typeof v === 'number' ? v : parseInt(v);
-      return isNaN(n) ? 0 : n;
-    };
+    // ── 10. TROPHIES + MONTH COUNTS ─────────────────────────
+    // One scan over all twelve tabs feeds the trophy case, the
+    // next-to-fall pick and every percentage below, so they cannot
+    // disagree. This used to read row 46, a sheet formula whose scoping
+    // could not be seen from here — the same trap column R was for the
+    // streak.
+    const trophyScan = computeTrophies(monthGrids, badHabits, today);
+    const goodTicks = monthTicks(monthGrids, activeGood, today);
+    const badTicks = trophyScan.ticksByHabit;
+    const conqueredThisMonth = trophyScan.conqueredThisMonth;
 
+    const pctOf = ticks => totalDays > 0 ? Math.round((ticks / totalDays) * 100) : 0;
     const goodHabitStats = activeGood.map(h => ({
       name: h.name,
-      percent: totalDays > 0 ? Math.round((countOf(h) / totalDays) * 100) : 0
+      percent: pctOf(goodTicks[h.colIndex] || 0)
     }));
     const badHabitStats = activeBad.map(h => ({
       name: h.name,
-      percent: totalDays > 0 ? Math.round((countOf(h) / totalDays) * 100) : 0
+      percent: pctOf(badTicks[h.colIndex] || 0)
     }));
 
     const sortedBad = badHabitStats.slice().sort((a, b) => a.percent - b.percent);
     const worst = sortedBad.length > 0 ? sortedBad[0] : null;
     const best  = sortedBad.length > 0 ? sortedBad[sortedBad.length - 1] : null;
 
-    // ── 11. CONQUERED + GHOST RELAPSE CHECK ─────────────────
-    const graveyard = [];
-
-    conqueredBad.forEach(h => {
-      const pct = totalDays > 0 ? Math.round((countOf(h) / totalDays) * 100) : 0;
-
-      let relapseCount = 0;
-      if (h.note && h.note.includes('conquered:')) {
-        const conquestDate = new Date(h.note.replace('conquered:', '').trim());
-        conquestDate.setHours(0, 0, 0, 0);
-        for (let i = 0; i < weekStartRows.length; i++) {
-          for (let d = 0; d < 7; d++) {
-            const r = weekStartRows[i] + d;
-            const rowDate = monthData[r] ? serialToDate(monthData[r][1]) : null;
-            if (!rowDate) continue;
-            if (rowDate > conquestDate && isChecked(monthData[r][h.colIndex])) relapseCount++;
-          }
-        }
-      }
-
-      graveyard.push({
-        name: h.name,
-        percent: pct,
-        relapseCount,
-        warning: relapseCount > 0
-          ? `⚠ Slipped ${relapseCount} time${relapseCount > 1 ? 's' : ''} since conquest`
-          : null
-      });
-    });
-
-    activeBad.forEach(h => {
-      const pct = totalDays > 0 ? Math.round((countOf(h) / totalDays) * 100) : 0;
-      if (pct >= 90) graveyard.push({ name: h.name, percent: pct, relapseCount: 0, warning: null });
-    });
-
-    // ── 12. NEXT TO FALL ─────────────────────────────────────
+    // ── 11. NEXT TO FALL ─────────────────────────────────────
+    // The active bad habit closest to this month's trophy that has not
+    // already won it. A habit in the trophy case is done for the month and
+    // must not also be shown as the next one to fall — that double billing
+    // was the bug. All of them won it: show nothing.
+    const monthBar = trophyScan.trophies.thresholds.months[today.getMonth()];
     let nextToFall = null, nextToFallDays = 0;
     activeBad.forEach(h => {
-      const c = countOf(h);
-      if (c > nextToFallDays && c < 30) { nextToFallDays = c; nextToFall = h.name; }
+      if (conqueredThisMonth.indexOf(h.name) !== -1) return;
+      const c = badTicks[h.colIndex] || 0;
+      if (nextToFall === null || c > nextToFallDays) { nextToFallDays = c; nextToFall = h.name; }
     });
-    const daysToKill = 30 - nextToFallDays;
+    const daysToKill = Math.max(0, monthBar - nextToFallDays);
 
     // ── 13. WEEK START + STREAK WRITE ────────────────────────
     const weekStartDateObj = monthData[weekRow] ? serialToDate(monthData[weekRow][1]) : null;
@@ -400,7 +368,9 @@ module.exports = async (req, res) => {
       badHabitStats,
       worst,
       best,
-      graveyard,
+      trophies:     trophyScan.trophies,
+      conqueredThisMonth,
+      monthTrophyBar: monthBar,
       weeklyTrend:  last4Weeks,
       habitsOnTrack,
       prevHabitsOnTrack,

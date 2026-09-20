@@ -119,6 +119,21 @@
     .calendar-scroll { scrollbar-width: none; }
     body { overscroll-behavior-y: none; }
     .th-conquered-card { background: var(--bg-card); border-color: var(--conquered-border); }
+    .tc-row { border-top: 1px solid var(--border-default); padding: 14px 0 12px; }
+    .tc-row:first-child { border-top: none; padding-top: 2px; }
+    .tc-name { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+    .tc-count { font-size: 10px; color: var(--text-muted); letter-spacing: .04em; }
+    .tc-months { display: grid; grid-template-columns: repeat(12, 1fr); gap: 3px; margin: 8px 0 0; }
+    .tc-cell { aspect-ratio: 1; border-radius: 3px; background: var(--ntf-empty); }
+    .tc-cell.won { background: var(--accent); }
+    .tc-cell.now { box-shadow: inset 0 0 0 1px var(--accent-text); }
+    .tc-labels { display: grid; grid-template-columns: repeat(12, 1fr); gap: 3px; margin-top: 4px; }
+    .tc-label { font-size: 8px; text-align: center; color: var(--text-muted); letter-spacing: -.02em; }
+    .tc-awards { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
+    .tc-award { font-size: 9px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase;
+                padding: 3px 8px; border-radius: 100px; border: 1px solid var(--accent);
+                color: var(--accent-text); }
+    .tc-award.year { background: var(--accent); color: #fff; border-color: var(--accent); }
     .th-conquered-item { background: var(--bg-card-inner); border-color: var(--border-default); }
     .th-conquered-pct { color: var(--accent-text); }
     .th-divider { background: var(--border-default); }
@@ -315,9 +330,9 @@
       <!-- CONQUERED -->
       <div id="graveyard-section" class="hidden mb-5">
         <div class="card th-conquered-card border rounded-3xl p-6 text-center">
-          <div class="text-sm font-semibold tracking-wide mb-1" style="color:var(--text-secondary)">Conquered</div>
-          <div class="text-[9px] mb-4" style="color:var(--text-muted)">Habits eliminated at 90%+ this month</div>
-          <div id="graveyard-list" class="flex flex-wrap gap-2 justify-center"></div>
+          <div class="text-sm font-semibold tracking-wide mb-1" style="color:var(--text-secondary)">Trophy Case</div>
+          <div id="graveyard-sub" class="text-[9px] mb-4" style="color:var(--text-muted)"></div>
+          <div id="graveyard-list" class="text-left"></div>
         </div>
       </div>
 
@@ -600,20 +615,26 @@
         document.getElementById('badge-week').textContent = 'Best Week: ' + (data.bestWeek || 0) + '%';
         document.getElementById('badge-improved').textContent = data.mostImproved ? '↑ ' + data.mostImproved + ' most improved' : '—';
 
-        // Next to fall
+        // Next to fall. The target is this month's trophy threshold, which is
+        // 90% of the month's real length, so February draws 25 boxes and not 30.
+        const ntfSection = document.getElementById('next-to-fall-section');
         if (data.nextToFall) {
-          document.getElementById('next-to-fall-section').classList.remove('hidden');
+          const bar = data.monthTrophyBar || 30;
+          ntfSection.classList.remove('hidden');
           document.getElementById('ntf-name').textContent = data.nextToFall;
-          document.getElementById('ntf-count').textContent = data.nextToFallDays + ' / 30 days';
+          document.getElementById('ntf-count').textContent = data.nextToFallDays + ' / ' + bar + ' days';
           const days = data.daysToKill || 0;
           document.getElementById('ntf-motivation').textContent = days === 1 ? 'One more day. Finish it.' : days + ' more days and it\'s dead forever. Finish it off.';
           const boxes = document.getElementById('ntf-boxes');
           boxes.innerHTML = '';
-          for (let i = 0; i < 30; i++) {
+          boxes.style.gridTemplateColumns = 'repeat(' + Math.min(bar, 10) + ',1fr)';
+          for (let i = 0; i < bar; i++) {
             const b = document.createElement('div');
             b.style.cssText = 'aspect-ratio:1;border-radius:2px;height:9px;background:' + (i < data.nextToFallDays ? 'var(--ntf-filled)' : 'var(--ntf-empty)') + ';';
             boxes.appendChild(b);
           }
+        } else {
+          ntfSection.classList.add('hidden');
         }
 
         // Focus habits
@@ -668,17 +689,41 @@
         // Good habits overview (default view)
         renderOverviewList(data.goodHabitStats || [], 'good');
 
-        // Conquered
-        if (data.graveyard && data.graveyard.length > 0) {
-          document.getElementById('graveyard-section').classList.remove('hidden');
-          document.getElementById('graveyard-list').innerHTML = data.graveyard.map(function(h) {
-            return '<div class="th-conquered-item border rounded-2xl px-4 py-3 text-center">' +
-              '<div class="text-xl mb-1">&#x1FAA6;</div>' +
-              '<div class="text-sm font-semibold" style="color:var(--text-secondary)">' + h.name + '</div>' +
-              '<div class="text-[9px] th-conquered-pct mt-1">' + h.percent + '% eliminated</div>' +
-              (h.warning ? '<div class="text-[9px] mt-1" style="color:var(--bad-color)">' + h.warning + '</div>' : '') +
+        // Trophy case. One row per habit that has won something: a strip of
+        // twelve month cells, then the season and year awards it earned.
+        // Hidden entirely until the first trophy.
+        const tcSection = document.getElementById('graveyard-section');
+        const tcWinners = ((data.trophies && data.trophies.habits) || []).filter(function (h) { return h.count > 0; });
+        if (tcWinners.length > 0) {
+          const monthInitials = ['J','F','M','A','M','J','J','A','S','O','N','D'];
+          const monthFull = ['January','February','March','April','May','June',
+                             'July','August','September','October','November','December'];
+          const nowMonth = new Date().getMonth();
+          tcSection.classList.remove('hidden');
+          document.getElementById('graveyard-sub').textContent =
+            'A trophy for every month you stayed under the line';
+          document.getElementById('graveyard-list').innerHTML = tcWinners.map(function (h) {
+            const cells = h.months.map(function (m) {
+              return '<div class="tc-cell' + (m.won ? ' won' : '') + (m.m === nowMonth ? ' now' : '') +
+                     '" title="' + monthFull[m.m] + ': ' + m.ticks + ' / ' + m.threshold + '"></div>';
+            }).join('');
+            const labels = monthInitials.map(function (x) { return '<div class="tc-label">' + x + '</div>'; }).join('');
+            const awards = h.seasons.filter(function (sn) { return sn.won; })
+              .map(function (sn) { return '<span class="tc-award">' + sn.label + '</span>'; }).join('');
+            const yearAward = h.year.won ? '<span class="tc-award year">' + data.trophies.year + '</span>' : '';
+            const n = h.count;
+            return '<div class="tc-row">' +
+              '<div class="flex items-baseline justify-between gap-3">' +
+                '<div class="tc-name">' + h.name + '</div>' +
+                '<div class="tc-count">' + n + (n === 1 ? ' trophy' : ' trophies') + '</div>' +
+              '</div>' +
+              '<div class="tc-months">' + cells + '</div>' +
+              '<div class="tc-labels">' + labels + '</div>' +
+              (awards || yearAward ? '<div class="tc-awards">' + awards + yearAward + '</div>' : '') +
               '</div>';
           }).join('');
+        } else {
+          tcSection.classList.add('hidden');
         }
 
         // Calendar

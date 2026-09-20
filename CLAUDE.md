@@ -19,6 +19,7 @@ Guidance for Claude (and humans) working in this repo.
 | `_validate.js` | **read** (Control Panel) | Shared input validation for the write endpoints. |
 | `_streak.js` | — | The streak rule and the focus-habit counter, both year-wide. |
 | `_year.js` | — | Which year the sheet covers; gates the app after new year. |
+| `_trophies.js` | — | Month / season / year trophies for bad habits, calendar-month scoped. |
 | `get-habits.js` | **read** (readonly scope) | One batchGet over all twelve month tabs + the Control Panel; returns habits, config, the year-wide streak and the focus counters. |
 | `get-coaching.js` | **none** | No sheet access — takes stats from the request body, calls OpenAI (`OPENAI_API_KEY`), returns a coaching note. |
 | `toggle-habit.js` | **write** | Toggles a habit cell for a day. Dashboard C7 belongs to the sheet’s own Apps Script. |
