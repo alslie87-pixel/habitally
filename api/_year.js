@@ -6,9 +6,15 @@
 // rows, and every aggregate is derived from a year that is over.
 //
 // The sheet describes itself: the date column of each month tab holds real
-// dates, so the year is read from the first dated row rather than from a
-// separate setting that a customer could forget to update. An empty tab has
-// no year to read, and an unknown year is never treated as out of year.
+// dates, so the year is read from the grid rather than from a separate
+// setting that a customer could forget to update. An empty tab has no year to
+// read, and an unknown year is never treated as out of year.
+//
+// The year is the one MOST of the dated rows fall in, not the first one seen.
+// A tab's first week starts on the Monday on or before the 1st, so January's
+// grid opens in late December of the previous year and December's runs into
+// January of the next. Reading the first row would call a correctly rolled
+// sheet out of year and lock the customer out of their own app.
 //
 // When the sheet's year is not the current year, endpoints stop short: the
 // read endpoints gate their aggregates and return this state instead, and
@@ -20,28 +26,45 @@ const { serialToDate } = require('./_streak');
 const WEEK_START_ROWS = [1, 10, 19, 28, 37]; // 0-based array rows (sheet rows 2, 11, 20, 29, 38)
 const DATE_COL = 1;                          // column B
 
-// First dated day row of a month grid -> its year, or null when the tab holds
-// no dates at all.
-function sheetYearFrom(grid) {
-  if (!grid || !grid.length) return null;
+// Counts how many dated day rows of one grid fall in each year.
+function tallyYears(grid, tally) {
+  if (!grid || !grid.length) return tally;
   for (let i = 0; i < WEEK_START_ROWS.length; i++) {
     for (let d = 0; d < 7; d++) {
       const row = grid[WEEK_START_ROWS[i] + d];
       if (!row) continue;
       const date = serialToDate(row[DATE_COL]);
-      if (date) return date.getFullYear();
+      if (!date) continue;
+      const y = date.getFullYear();
+      tally.set(y, (tally.get(y) || 0) + 1);
     }
   }
-  return null;
+  return tally;
 }
 
-// Same, across several grids: the first tab that carries dates wins.
+// The year with the most dated rows; ties go to the later year, since a sheet
+// that has just been rolled over leans towards the new one. null when nothing
+// is dated.
+function topYear(tally) {
+  let best = null, bestCount = 0;
+  tally.forEach((count, year) => {
+    if (count > bestCount || (count === bestCount && best !== null && year > best)) {
+      best = year; bestCount = count;
+    }
+  });
+  return best;
+}
+
+// The year one month grid is for.
+function sheetYearFrom(grid) {
+  return topYear(tallyYears(grid, new Map()));
+}
+
+// The year a whole set of month grids is for.
 function sheetYearFromGrids(grids) {
-  for (let i = 0; i < (grids || []).length; i++) {
-    const y = sheetYearFrom(grids[i]);
-    if (y !== null) return y;
-  }
-  return null;
+  const tally = new Map();
+  (grids || []).forEach(g => tallyYears(g, tally));
+  return topYear(tally);
 }
 
 // sheetYear comes from sheetYearFrom / sheetYearFromGrids; today is the

@@ -617,27 +617,43 @@
         }
 
         // Focus habits
-        document.getElementById('focus-good-name').textContent = data.goodFocus;
-        document.getElementById('focus-good-count').textContent = data.goodCount + ' / 30';
-        var goodPct = Math.min(Math.round((data.goodCount / 30) * 100), 100);
-        document.getElementById('focus-good-bar').style.width = goodPct + '%';
+        // goodCount / badCount are ticks in the last focusWindowDays calendar
+        // days. When the focus cell names a habit that is not in the list, the
+        // card says so instead of showing "Day 0", which reads like a real
+        // score of zero.
+        var focusWindow = data.focusWindowDays || 30;
+
+        function renderFocus(kind, name, count, found, message) {
+          document.getElementById('focus-' + kind + '-name').textContent = name;
+          var countEl = document.getElementById('focus-' + kind + '-count');
+          var barEl   = document.getElementById('focus-' + kind + '-bar');
+          var msgEl   = document.getElementById('focus-' + kind + '-msg');
+          if (found === false) {
+            countEl.textContent = '\u2014';
+            barEl.style.width = '0%';
+            msgEl.textContent = name && name !== 'Not set'
+              ? '"' + name + '" is not in your habit list. Pick a focus habit again.'
+              : 'No focus habit set yet. Tap to choose one.';
+            return;
+          }
+          countEl.textContent = count + ' / ' + focusWindow;
+          barEl.style.width = Math.min(Math.round((count / focusWindow) * 100), 100) + '%';
+          msgEl.textContent = 'Day ' + count + '. ' + message;
+        }
+
         var gMsg = data.goodCount < 3 ? 'Just getting started. Show up today.' :
                    data.goodCount < 7 ? 'Foundations first. Keep showing up.' :
                    data.goodCount < 14 ? 'Building momentum. Don\'t stop now.' :
                    data.goodCount < 21 ? 'Two weeks in. This is becoming you.' :
                    data.goodCount < 30 ? 'Almost there. Lock it in.' : 'Habit formed. You did it.';
-        document.getElementById('focus-good-msg').textContent = 'Day ' + data.goodCount + '. ' + gMsg;
+        renderFocus('good', data.goodFocus, data.goodCount, data.goodFocusFound, gMsg);
 
-        document.getElementById('focus-bad-name').textContent = data.badFocus;
-        document.getElementById('focus-bad-count').textContent = data.badCount + ' / 30';
-        var badPct = Math.min(Math.round((data.badCount / 30) * 100), 100);
-        document.getElementById('focus-bad-bar').style.width = badPct + '%';
         var bMsg = data.badCount < 3 ? 'The hardest part is right now.' :
                    data.badCount < 7 ? 'Stay sharp. One day at a time.' :
                    data.badCount < 14 ? 'One week clean. The pattern is breaking.' :
                    data.badCount < 21 ? 'Two weeks. Your brain is rewiring.' :
                    data.badCount < 30 ? '21 days. This is real change.' : 'Habit eliminated. New you.';
-        document.getElementById('focus-bad-msg').textContent = 'Day ' + data.badCount + '. ' + bMsg;
+        renderFocus('bad', data.badFocus, data.badCount, data.badFocusFound, bMsg);
 
         // Worst / Best
         if (data.worst) {

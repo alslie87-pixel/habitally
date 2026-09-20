@@ -1,8 +1,9 @@
 const { google } = require('googleapis');
 const { resolveSheetId } = require('./_user');
 const { todayFrom } = require('./_date');
-const { serialToDate, isChecked, computeStreak } = require('./_streak');
-const { sheetYearFrom, yearState, outOfYearPayload } = require('./_year');
+const { serialToDate, isChecked, computeStreakAcrossYear, countFocusTicks,
+        FOCUS_WINDOW_DAYS } = require('./_streak');
+const { sheetYearFromGrids, yearState, outOfYearPayload } = require('./_year');
 
 
 // ── v28 SHEET STRUCTURE ──────────────────────────────────────
@@ -57,12 +58,30 @@ module.exports = async (req, res) => {
     const sheetId = await resolveSheetId(req);
     if (!sheetId) return res.status(404).json({ error: 'unknown user' });
 
-    // ── 1. READ CONFIG (habit list, position-based mapping) ──
-    const configRes = await sheets.spreadsheets.values.get({
+    // ── 1. READ EVERYTHING IN ONE CALL ───────────────────────
+    // Twelve month tabs + the two Control Panel ranges. The streak and the
+    // focus counters span the whole year, so the whole year has to be here;
+    // one batchGet is also one API call instead of the three separate
+    // values.get calls this used to make.
+    const today = todayFrom(req); // client's local date (?date=YYYY-MM-DD) or server midnight
+    const monthNames = ["January","February","March","April","May","June",
+                        "July","August","September","October","November","December"];
+    const monthName = monthNames[today.getMonth()];
+    const lastColLetter = colIndexToLetter(COL_SIGNAL); // U
+
+    const ranges = monthNames.map(m => `'${m}'!A1:${lastColLetter}46`);
+    ranges.push(CP_HABITS_RANGE, CP_FOCUS_RANGE);
+
+    const batch = await sheets.spreadsheets.values.batchGet({
       spreadsheetId: sheetId,
-      range: CP_HABITS_RANGE
+      ranges,
+      valueRenderOption: 'UNFORMATTED_VALUE'
     });
-    const configRows = configRes.data.values || [];
+    const vr = batch.data.valueRanges || [];
+    const monthGrids = vr.slice(0, 12).map(r => (r && r.values) || []);
+    const configRows = (vr[12] && vr[12].values) || [];
+    const focusData  = (vr[13] && vr[13].values) || [];
+    const monthData  = monthGrids[today.getMonth()];
 
     const badHabits = [];
     const goodHabits = [];
@@ -87,34 +106,28 @@ module.exports = async (req, res) => {
     const activeGood   = goodHabits.filter(h => h.status === 'active');
     const conqueredBad = badHabits.filter(h => h.status === 'conquered');
 
-    // ── 2. READ FOCUS + MONTH DATA ───────────────────────────
-    const today = todayFrom(req); // client's local date (?date=YYYY-MM-DD) or server midnight
-    const monthNames = ["January","February","March","April","May","June",
-                        "July","August","September","October","November","December"];
-    const monthName = monthNames[today.getMonth()];
+    // ── 2. FOCUS HABITS ──────────────────────────────────────
+    // C20/C21 hold a habit NAME as free text. update-focus only validates it
+    // when the app writes it, so a hand-edit or a rename in the sheet can
+    // leave a name that matches nothing. That is reported as its own state
+    // rather than counted as zero days.
+    const goodFocus = focusData[0] && focusData[0][0] ? String(focusData[0][0]).trim() : '';
+    const badFocus  = focusData[1] && focusData[1][0] ? String(focusData[1][0]).trim() : '';
 
-    const focusRes = await sheets.spreadsheets.values.get({
-      spreadsheetId: sheetId,
-      range: CP_FOCUS_RANGE
-    });
-    const focusData = focusRes.data.values || [];
-    const goodFocus = focusData[0] && focusData[0][0] ? String(focusData[0][0]) : 'Not set';
-    const badFocus  = focusData[1] && focusData[1][0] ? String(focusData[1][0]) : 'Not set';
-
-    const lastColLetter = colIndexToLetter(COL_SIGNAL); // U
-    const monthRes = await sheets.spreadsheets.values.get({
-      spreadsheetId: sheetId,
-      range: `'${monthName}'!A1:${lastColLetter}46`,
-      valueRenderOption: 'UNFORMATTED_VALUE'
-    });
-    const monthData = monthRes.data.values || [];
+    const findHabit = (list, name) => {
+      if (!name) return null;
+      const want = name.toLowerCase();
+      return list.find(h => h.name.toLowerCase() === want) || null;
+    };
+    const goodFocusHabit = findHabit(goodHabits, goodFocus);
+    const badFocusHabit  = findHabit(badHabits, badFocus);
 
     // ── YEAR GATE ────────────────────────────────────────────
     // On 1 January the month tabs still hold last year's dates. Every
     // number below (week selection, streak, percentages, graveyard) would
     // be derived from a year that is over, so stop here and let the app
     // explain instead.
-    const year = yearState(sheetYearFrom(monthData), today);
+    const year = yearState(sheetYearFromGrids(monthGrids), today);
     if (year.outOfYear) return res.status(200).json(outOfYearPayload(year));
 
     // ── 3. FIND CURRENT WEEK ─────────────────────────────────
@@ -269,9 +282,10 @@ module.exports = async (req, res) => {
     });
 
     // ── 8. STREAK (past days only, today never counts) ───────
-    // Derived for the response only. toggle-habit mirrors it into
-    // Dashboard C7 when a tick actually changes it.
-    const streak = computeStreak(monthData, activeGood, today);
+    // Derived for the response only; the sheet's own Apps Script owns
+    // Dashboard C7. Spans every tab of the year, so it no longer resets on
+    // the 1st of a month.
+    const streak = computeStreakAcrossYear(monthGrids, activeGood, today);
 
     const weakest   = monthData[weekRow] && monthData[weekRow][COL_WEAKEST]
       ? String(monthData[weekRow][COL_WEAKEST]).trim() : 'None';
@@ -374,10 +388,13 @@ module.exports = async (req, res) => {
       signal:       smartSignal || signalMsg,
       week:         weekData,
       sheetName:    monthName,
-      goodFocus,
-      badFocus,
-      goodCount:    0,
-      badCount:     0,
+      goodFocus:    goodFocus || 'Not set',
+      badFocus:     badFocus || 'Not set',
+      goodCount:    goodFocusHabit ? countFocusTicks(monthGrids, goodFocusHabit.colIndex, today) : 0,
+      badCount:     badFocusHabit ? countFocusTicks(monthGrids, badFocusHabit.colIndex, today) : 0,
+      goodFocusFound: !!goodFocusHabit,
+      badFocusFound:  !!badFocusHabit,
+      focusWindowDays: FOCUS_WINDOW_DAYS,
       daysElapsed,
       goodHabitStats,
       badHabitStats,

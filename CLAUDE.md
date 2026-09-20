@@ -17,11 +17,11 @@ Guidance for Claude (and humans) working in this repo.
 | `_user.js` | **read** (Customers sheet) | Resolves `?user=` + `?t=` to the customer's spreadsheet ID. |
 | `_date.js` | — | `todayFrom(req)`: the client's `?date=` or server midnight. |
 | `_validate.js` | **read** (Control Panel) | Shared input validation for the write endpoints. |
-| `_streak.js` | — | The streak rule, shared by `get-habits` and `toggle-habit`. |
+| `_streak.js` | — | The streak rule and the focus-habit counter, both year-wide. |
 | `_year.js` | — | Which year the sheet covers; gates the app after new year. |
-| `get-habits.js` | **read** (readonly scope) | Reads the Control Panel + habit tabs, returns habits/config. |
+| `get-habits.js` | **read** (readonly scope) | One batchGet over all twelve month tabs + the Control Panel; returns habits, config, the year-wide streak and the focus counters. |
 | `get-coaching.js` | **none** | No sheet access — takes stats from the request body, calls OpenAI (`OPENAI_API_KEY`), returns a coaching note. |
-| `toggle-habit.js` | **write** | Toggles a habit cell for a day, then mirrors the new streak into Dashboard C7. |
+| `toggle-habit.js` | **write** | Toggles a habit cell for a day. Dashboard C7 belongs to the sheet’s own Apps Script. |
 | `set-onboarded.js` | **write** | Writes the hidden onboarding marker (Control Panel Z1). |
 | `update-focus.js` | **write** | Updates the current focus. |
 | `update-config.js` | **write** | Updates Control Panel configuration. |
