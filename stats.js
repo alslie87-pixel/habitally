@@ -74,6 +74,8 @@
     border:none;border-radius:50%;width:44px;height:44px;cursor:pointer;
     box-shadow:0 4px 14px rgba(0,0,0,.4), inset 0 1px 2px rgba(255,255,255,.25), inset 0 -2px 4px rgba(0,0,0,.3);
     display:flex;align-items:center;justify-content:center}
+  html.light #stx-fab{
+    box-shadow:0 4px 14px rgba(24,20,50,.22), inset 0 1px 2px rgba(255,255,255,.3), inset 0 -2px 4px rgba(24,20,50,.18)}
   #obx{position:fixed;inset:0;background:var(--bg-page);z-index:90;overflow-y:auto;
     padding:24px 18px;display:none}
   #obx.show{display:block}
@@ -103,6 +105,9 @@
 
   /* carved bars icon */
   const STX_P = 'M6 18V11 M12 18V6 M18 18V14';
+  // mainColor defaults to the dark carve used inside the panel; the floating
+  // button passes ON_ACCENT because it always sits on brand purple.
+  const ON_ACCENT = '#FFFFFF';
   const stxIcon = (size, mainColor) => `<svg viewBox="0 0 24 24" width="${size}" height="${size}" style="display:block">` +
     `<g fill="none" stroke-linecap="round">` +
     `<path d="${STX_P}" stroke="#000" stroke-opacity=".5" stroke-width="3.4" transform="translate(0,0.7)"/>` +
@@ -124,7 +129,7 @@
   const fab = document.createElement('button');
   fab.id = 'stx-fab';
   fab.title = 'Progress';
-  fab.innerHTML = stxIcon(24);
+  fab.innerHTML = stxIcon(24, ON_ACCENT);
   fab.onclick = openPanel;
   document.body.appendChild(fab);
 
