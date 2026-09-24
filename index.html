@@ -129,6 +129,14 @@
     body { overscroll-behavior-y: none; }
     .trophycase { background: var(--bg-card); border: 1px solid var(--conquered-border); border-radius: 16px; padding: 22px 18px; }
     .trophycase.is-empty { display: none; }
+    /* Home and Insights are sibling screens that crossfade. Only one is in
+       the layout at a time, so the page never stacks one over the other. */
+    .app-screen { transition: opacity .18s ease; }
+    .app-screen.is-fading { opacity: 0; }
+    .app-screen.is-off { display: none; }
+    @media (prefers-reduced-motion: reduce) {
+      .app-screen { transition: none; }
+    }
     .tc-title { font-size: 15px; font-weight: 600; color: var(--text-primary); }
     .tc-sub { font-size: 11.5px; color: var(--text-muted); margin-top: 2px; margin-bottom: 16px; }
     .tc-wall { display: grid; grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); gap: 10px; }
@@ -182,7 +190,7 @@
       <rect x="19" y="59" width="34" height="1.6" rx="1" fill="#D9B26A" opacity=".55"/>
     </symbol>
   </defs></svg>
-  <div class="max-w-5xl w-full mx-auto">
+  <div id="home-screen" class="app-screen max-w-5xl w-full mx-auto">
     <div id="loading" class="hidden"></div>
     <div id="error-state" class="hidden">
       <div class="rounded-3xl p-8 text-center" style="background:rgba(248,113,113,0.08);border:1px solid rgba(248,113,113,0.3);color:var(--bad-color)">
@@ -446,6 +454,40 @@
       return s ? p + (p.includes('?') ? '&' : '?') + s : p;
     };
 
+    // ── APP SHELL BUS ─────────────────────────────────────
+    // stats.js owns the Insights screen and registers its hooks here. Both
+    // files read pendingWrites so a background refresh can never overwrite a
+    // tick that is still on its way to the sheet.
+    window.HT = window.HT || {};
+    HT.pendingWrites = 0;
+    HT.SCREEN_FADE_MS = 180;
+    HT.reducedMotion = function () {
+      return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    };
+
+    // Assign only when the markup actually differs. Rewriting identical HTML
+    // tears down and rebuilds nodes for nothing, which flickers and drops any
+    // scroll inside the container.
+    function setHTML(el, html) {
+      if (!el) return false;
+      if (el.innerHTML === html) return false;
+      el.innerHTML = html;
+      return true;
+    }
+
+    // The calendar is a horizontal strip and the page scrolls the window.
+    // A background refresh must leave both exactly where the user left them,
+    // so positions are read before the re-render and put back after it.
+    function captureScroll() {
+      const strip = document.querySelector('.calendar-scroll');
+      const sx = strip ? strip.scrollLeft : 0;
+      const wy = window.scrollY;
+      return function restore() {
+        if (strip && strip.scrollLeft !== sx) strip.scrollLeft = sx;
+        if (window.scrollY !== wy) window.scrollTo(0, wy);
+      };
+    }
+
     // ── ERROR MESSAGES ────────────────────────────────────
     // Customers never see a Google API error or a stack message. The server's
     // own text is passed through only for 400 and 429, which our endpoints use
@@ -618,17 +660,25 @@
     });
 
     // ── LOAD APP ──────────────────────────────────────────
-    async function loadApp() {
+    // silent: a background refresh. It never shows an error screen, never
+    // moves the user and never changes which screen is on top — a failed
+    // refresh simply leaves the data that is already on the page.
+    async function loadApp(silent) {
       try {
         const res = await fetch(api('/api/get-habits'));
         let data = null;
         try { data = await res.json(); } catch (e) { /* non-JSON body */ }
         if (!res.ok || !data || data.error) {
+          if (silent) return false;
           // an invalid link cannot be retried into working, so hide the button
           showError(friendlyError('get-habits', res, data, null), res.status !== 404);
-          return;
+          return false;
         }
-        if (data.outOfYear) { showYearState(data.message); return; }
+        if (data.outOfYear) {
+          if (silent) return false;
+          showYearState(data.message);
+          return false;
+        }
         appData = data;
         document.getElementById('loading').classList.add('hidden');
         document.getElementById('app').classList.remove('hidden');
@@ -746,20 +796,23 @@
           document.getElementById('tc-wall').innerHTML = '';
         } else {
           tcSection.classList.remove('is-empty');
-          document.getElementById('tc-wall').innerHTML = tcWon.map(function (t) {
+          setHTML(document.getElementById('tc-wall'), tcWon.map(function (t) {
             return '<div class="tc-tile">' +
               '<svg class="tc-cup" aria-hidden="true"><use href="#trophyGold"/></svg>' +
               '<div class="tc-name">' + escapeHtml(t.name) + '</div>' +
               '<div class="tc-when">' + t.when + '</div>' +
               '</div>';
-          }).join('');
+          }).join(''));
         }
 
         // Calendar
         renderCalendar(data);
 
+        return true;
       } catch (err) {
+        if (silent) return false;
         showError(friendlyError('get-habits', null, null, err), true);
+        return false;
       }
     }
 
@@ -769,7 +822,7 @@
     function renderOverviewList(stats, mode) {
       var listEl = document.getElementById('habits-overview-list');
       var sorted = (stats || []).slice().sort(function(a, b) { return b.percent - a.percent; });
-      listEl.innerHTML = sorted.map(function(h, i) {
+      setHTML(listEl, sorted.map(function(h, i) {
         var color = h.percent >= 70
           ? 'var(--good-color,var(--accent-text))'
           : h.percent >= 50
@@ -779,7 +832,7 @@
         return '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;' + border + '">' +
           '<span style="font-size:13px;color:var(--text-secondary);">' + h.name + '</span>' +
           '<span style="font-size:13px;font-weight:500;color:' + color + ';">' + h.percent + '%</span></div>';
-      }).join('');
+      }).join(''));
     }
 
     function toggleOverview() {
@@ -932,6 +985,7 @@
         chip.style.color = newValue ? '#fff' : goodOffText;
         icon.textContent = newValue ? '\u2713' : '\u25CB';
       }
+      HT.pendingWrites++;
       try {
         var r = await postJson('/api/toggle-habit', { sheetName, row, col });
         if (!r.res.ok || !r.data || !r.data.success) {
@@ -946,6 +1000,8 @@
         chip.dataset.checked = currentValue;
         alert(friendlyError('toggle-habit', null, null, err));
         loadApp();
+      } finally {
+        HT.pendingWrites--;
       }
     }
 
@@ -1233,8 +1289,44 @@
       sheet.addEventListener('touchend', onTouchEnd, { passive: true });
     }
 
-    // ── AUTO REFRESH ──────────────────────────────────────
-    setTimeout(function() { window.location.reload(); }, 600000);
+    // ── SILENT REFRESH ────────────────────────────────────
+    // This used to be a single setTimeout that called location.reload() after
+    // ten minutes. A reload throws the document away, so it closed Insights,
+    // reset the scroll and restarted the page under the user. Nothing reloads
+    // now: the data is re-fetched in the background and written into the
+    // values that changed, leaving every screen and scroll position alone.
+    var REFRESH_MS = 5 * 60 * 1000;
+    var lastRefresh = Date.now();
+    var refreshing = false;
+
+    HT.refreshAll = async function (reason) {
+      // never overwrite a tick that has not finished saving
+      if (refreshing || HT.pendingWrites > 0) return false;
+      refreshing = true;
+      var restoreScroll = captureScroll();
+      try {
+        var ok = await loadApp(true);
+        restoreScroll();
+        if (typeof HT.refreshInsights === 'function') {
+          // both screens update; neither is brought to the front
+          try { await HT.refreshInsights(); } catch (e) { /* keep what is shown */ }
+        }
+        if (ok) lastRefresh = Date.now();
+        return ok;
+      } finally {
+        refreshing = false;
+      }
+    };
+
+    setInterval(function () {
+      if (document.visibilityState !== 'visible') return;
+      if (Date.now() - lastRefresh < REFRESH_MS) return;
+      HT.refreshAll('interval');
+    }, 30000);
+
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'visible') HT.refreshAll('visible');
+    });
   </script>
   <script src="stats.js" defer></script>
 </body>

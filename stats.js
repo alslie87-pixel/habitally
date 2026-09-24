@@ -46,7 +46,7 @@
     --hxT3:#6E6B80; --hxT4:#4F4C60; --hxT5:#5E5B70; --hxFoot:#3F3D4D;
     --hxYr0:#191921; --hxYrF:#101016;
     position:fixed;inset:0;background:var(--hxP);z-index:80;
-    transform:translateX(100%);transition:transform .28s ease;overflow-y:auto;
+    display:none;opacity:0;transition:opacity .18s ease;overflow-y:auto;
     padding:22px 14px 50px 14px;-webkit-overflow-scrolling:touch;
     font-family:Manrope,system-ui,-apple-system,sans-serif;color:var(--hxT1b)}
   html.light #stx-panel{
@@ -58,7 +58,13 @@
     --hxT1:var(--text-primary,#1A1826); --hxT1b:var(--text-primary,#241F38); --hxT1c:#3A3550;
     --hxT2:var(--text-secondary,#5A5770); --hxT3:#6E6B84; --hxT4:#8A87A0; --hxT5:#7A7790; --hxFoot:#A8A5BC;
     --hxYr0:#E9E7F1; --hxYrF:#F2F0F8}
-  #stx-panel.open{transform:translateX(0)}
+  /* Home and Insights are siblings: only one is in the layout at a time, so
+     Insights is a screen rather than a panel stacked over the page. It keeps
+     its own scroll container, which is what lets the home screen go on
+     scrolling the window — pull-to-refresh depends on window.scrollY. */
+  #stx-panel.is-on{display:block}
+  #stx-panel.is-visible{opacity:1}
+  @media (prefers-reduced-motion: reduce){ #stx-panel{transition:none} }
   .hsx-page{max-width:760px;margin:0 auto;background:var(--hxPage);border:1px solid var(--hxB2);
     border-radius:22px;padding:20px;box-sizing:border-box;box-shadow:0 40px 90px -40px rgba(0,0,0,0.9)}
   .hsx-card{background:var(--hxC);border:1px solid var(--hxB);border-radius:16px;padding:18px;margin-top:14px}
@@ -67,7 +73,6 @@
   .hsx-row{display:flex;align-items:center;justify-content:space-between;gap:12px}
   .hsx-tiles{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
   @media(min-width:640px){.hsx-tiles{grid-template-columns:repeat(4,1fr)}}
-  .hsx-back{color:var(--hxT2);font:600 12px Manrope;cursor:pointer;padding:4px 0}
   .hsx-theme{cursor:pointer;padding:6px 13px;border-radius:999px;font:700 11px Manrope;letter-spacing:0.04em;background:var(--hxTile);border:1px solid var(--hxB);color:var(--hxT2)}
   @keyframes haloPulse{0%,100%{opacity:.5}50%{opacity:1}}
   #stx-fab{position:fixed;right:14px;bottom:14px;z-index:70;background:#7F77DD;color:#fff;
@@ -103,17 +108,20 @@
   st.textContent = css;
   document.head.appendChild(st);
 
-  /* carved bars icon */
+  /* carved line icons */
   const STX_P = 'M6 18V11 M12 18V6 M18 18V14';
+  const HOME_P = 'M4 11.2 L12 4.8 L20 11.2 M6.6 9.9 V19 H17.4 V9.9';
   // mainColor defaults to the dark carve used inside the panel; the floating
   // button passes ON_ACCENT because it always sits on brand purple.
   const ON_ACCENT = '#FFFFFF';
-  const stxIcon = (size, mainColor) => `<svg viewBox="0 0 24 24" width="${size}" height="${size}" style="display:block">` +
-    `<g fill="none" stroke-linecap="round">` +
-    `<path d="${STX_P}" stroke="#000" stroke-opacity=".5" stroke-width="3.4" transform="translate(0,0.7)"/>` +
-    `<path d="${STX_P}" stroke="#E6E3FF" stroke-opacity=".45" stroke-width="3.4" transform="translate(0,-0.6)"/>` +
-    `<path d="${STX_P}" stroke="${mainColor || '#100E24'}" stroke-width="2.9"/>` +
+  const carvedIcon = (size, d, mainColor, weight) => `<svg viewBox="0 0 24 24" width="${size}" height="${size}" style="display:block">` +
+    `<g fill="none" stroke-linecap="round" stroke-linejoin="round">` +
+    `<path d="${d}" stroke="#000" stroke-opacity=".5" stroke-width="${weight + 0.5}" transform="translate(0,0.7)"/>` +
+    `<path d="${d}" stroke="#E6E3FF" stroke-opacity=".45" stroke-width="${weight + 0.5}" transform="translate(0,-0.6)"/>` +
+    `<path d="${d}" stroke="${mainColor || '#100E24'}" stroke-width="${weight}"/>` +
     `</g></svg>`;
+  const stxIcon = (size, mainColor) => carvedIcon(size, STX_P, mainColor, 2.9);
+  const homeIcon = (size, mainColor) => carvedIcon(size, HOME_P, mainColor, 2.4);
 
   /* ---------- state ---------- */
   let S = null;
@@ -121,20 +129,100 @@
   let inflight = null;    // promise of the load() currently running
   const UI = { mi: null, open: null, pd: null, sb: null, day: null };
 
-  /* ---------- panel + fab ---------- */
+  /* ---------- the two screens + the fab ---------- */
   const panel = document.createElement('div');
   panel.id = 'stx-panel';
   document.body.appendChild(panel);
 
+  const home = document.getElementById('home-screen');
+
   const fab = document.createElement('button');
   fab.id = 'stx-fab';
-  fab.title = 'Progress';
-  fab.innerHTML = stxIcon(24, ON_ACCENT);
-  fab.onclick = openPanel;
+  fab.type = 'button';
   document.body.appendChild(fab);
 
-  function openPanel() { if (!S) loadError = null; render(); panel.classList.add('open'); }
-  function closePanel() { panel.classList.remove('open'); }
+  const HT = (window.HT = window.HT || {});
+  const FADE = HT.SCREEN_FADE_MS || 180;
+  const reduced = () => (typeof HT.reducedMotion === 'function'
+    ? HT.reducedMotion()
+    : !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches));
+
+  let screen = 'home';
+  let homeScrollY = 0;          // each screen remembers where the user was
+  let pushedState = false;      // did we add a history entry for Insights?
+  let fadeTimer = null;
+
+  const isInsights = () => screen === 'insights';
+  HT.isInsightsOpen = isInsights;
+
+  function paintFab() {
+    if (isInsights()) {
+      fab.innerHTML = homeIcon(24, ON_ACCENT);
+      fab.title = 'Back to home';
+      fab.setAttribute('aria-label', 'Back to home');
+    } else {
+      fab.innerHTML = stxIcon(24, ON_ACCENT);
+      fab.title = 'Open insights';
+      fab.setAttribute('aria-label', 'Open insights');
+    }
+  }
+
+  function after(ms, fn) {
+    clearTimeout(fadeTimer);
+    if (reduced()) { fn(); return; }
+    fadeTimer = setTimeout(fn, ms);
+  }
+
+  // Swap which screen is in the layout. Nothing here touches the URL.
+  function swapTo(next) {
+    if (next === screen) return;
+    if (next === 'insights') {
+      homeScrollY = window.scrollY;
+      if (!S) loadError = null;
+      panel.classList.add('is-on');      // in the layout, still transparent
+      render();                          // fills it and restores its own scrollTop
+      if (home) home.classList.add('is-fading');
+      screen = 'insights';
+      paintFab();
+      const show = () => panel.classList.add('is-visible');
+      if (reduced()) show(); else requestAnimationFrame(show);
+      after(FADE, () => { if (home) home.classList.add('is-off'); });
+    } else {
+      if (home) {
+        home.classList.remove('is-off');
+        window.scrollTo(0, homeScrollY); // back to exactly where the user was
+        const show = () => home.classList.remove('is-fading');
+        if (reduced()) show(); else requestAnimationFrame(show);
+      }
+      panel.classList.remove('is-visible');
+      screen = 'home';
+      paintFab();
+      after(FADE, () => panel.classList.remove('is-on'));
+    }
+  }
+
+  function openPanel() {
+    if (isInsights()) return;
+    swapTo('insights');
+    // Same href, byte for byte, so ?user= and &t= survive. The entry only
+    // exists so the Android back gesture returns home instead of leaving.
+    try { history.pushState({ htScreen: 'insights' }, '', location.href); pushedState = true; }
+    catch (e) { pushedState = false; }
+  }
+
+  function closePanel() {
+    if (!isInsights()) return;
+    if (pushedState) { history.back(); return; }  // popstate does the swap
+    swapTo('home');
+  }
+
+  window.addEventListener('popstate', () => {
+    pushedState = false;
+    if (isInsights()) swapTo('home');
+  });
+
+  fab.onclick = () => (isInsights() ? closePanel() : openPanel());
+  paintFab();
 
   /* swipe with horizontal-scroller guard */
   let tx = null, ty = null, txTarget = null;
@@ -156,9 +244,9 @@
     const dx = e.changedTouches[0].clientX - tx;
     const dy = Math.abs(e.changedTouches[0].clientY - ty);
     if (Math.abs(dx) > 70 && dy < 60) {
-      const fromScroller = !panel.classList.contains('open') && inHorizontalScroller(txTarget);
-      if (dx < 0 && !panel.classList.contains('open') && !fromScroller) openPanel();
-      if (dx > 0 && panel.classList.contains('open')) closePanel();
+      const fromScroller = !isInsights() && inHorizontalScroller(txTarget);
+      if (dx < 0 && !isInsights() && !fromScroller) openPanel();
+      if (dx > 0 && isInsights()) closePanel();
     }
     tx = null;
   }, { passive: true });
@@ -189,7 +277,7 @@
     if (!S) {
       if (loadError) {
         // one failed attempt -> show the error and wait for the user; never re-fetch on our own
-        panel.innerHTML = '<div class="hsx-page"><div class="hsx-back">← back</div>' +
+        panel.innerHTML = '<div class="hsx-page">' +
           '<div style="padding:40px 24px;text-align:center">' +
           '<div style="font:700 15px Manrope;color:var(--hxT1);margin-bottom:8px">Couldn’t load your stats</div>' +
           '<div style="font:500 12px/1.6 Manrope;color:var(--hxT3);margin-bottom:22px">Check your connection and try again. If it keeps failing, make sure all twelve month tabs still exist in your sheet.</div>' +
@@ -201,11 +289,11 @@
         if (rb) rb.onclick = () => { loadError = null; render(); };
         return;
       }
-      panel.innerHTML = '<div class="hsx-page"><div class="hsx-back">← back</div><div style="padding:30px;text-align:center;color:var(--hxT3);font:600 12px Manrope">Loading…</div></div>';
+      panel.innerHTML = '<div class="hsx-page"><div style="padding:30px;text-align:center;color:var(--hxT3);font:600 12px Manrope">Loading…</div></div>';
       bindBack(); load().then(() => render()); return;
     }
     if (S.outOfYear) {
-      panel.innerHTML = '<div class="hsx-page"><div class="hsx-back">← back</div>' +
+      panel.innerHTML = '<div class="hsx-page">' +
         '<div style="padding:40px 24px;text-align:center">' +
         '<div style="font-size:34px;margin-bottom:14px">🗓️</div>' +
         '<div style="font:500 13px/1.7 Manrope;color:var(--hxT2)">' + esc(S.message) + '</div>' +
@@ -401,7 +489,6 @@
     <div class="hsx-page">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:2px 2px 18px">
       <div style="display:flex;flex-direction:column;gap:7px">
-        <div class="hsx-back">← back</div>
         <div style="display:flex;align-items:center;gap:9px">${stxIcon(20, PUR)}
           <div style="font:800 25px/1 Manrope;letter-spacing:-0.03em;color:var(--hxT1)">${monthsIn === 1 ? 'First month in' : monthsIn + ' months in'}</div>
         </div>
@@ -545,8 +632,10 @@
     panel.querySelectorAll('[data-day]').forEach(el => el.addEventListener('click', () => { if (el.dataset.day) { UI.day = el.dataset.day; render(); } }));
     panel.scrollTop = scrollY;
   }
+  // The "← back" control is gone: the floating button now carries the way
+  // home, and the Android back gesture works, so a second control on the page
+  // was only ever there because Insights used to be an overlay.
   function bindBack() {
-    const b = $('.hsx-back', panel); if (b) b.onclick = closePanel;
     const t = $('#hsx-theme', panel);
     if (t) t.onclick = () => {
       if (typeof window.toggleTheme === 'function') { window.toggleTheme(); }
@@ -589,6 +678,20 @@
     })();
     return inflight;
   }
+
+  // Background refresh for the Insights screen. It never switches screens and
+  // never shows an error: if the fetch fails the data already on the page is
+  // kept exactly as it is. render() restores the panel's own scrollTop, so a
+  // refresh while the user is reading does not move them.
+  HT.refreshInsights = async function () {
+    if (!S) return false;            // nothing loaded yet; the first open fetches
+    const keep = S;
+    inflight = null;                 // force a fresh request, not the cached one
+    const fresh = await load();
+    if (!fresh) { S = keep; loadError = null; return false; }
+    if (isInsights()) render();      // in place; hidden screens update on open
+    return true;
+  };
 
 /* ---------- onboarding ---------- */
   const ob = document.createElement('div');
