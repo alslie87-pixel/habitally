@@ -30,53 +30,57 @@
   fl.href = 'https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap';
   document.head.appendChild(fl);
 
-  const GRN = '#97C459', RED = '#F09595', GLD = '#FAC775', LAV = '#AFA9EC', PUR = '#7F77DD';
+  // Ink palette. Charts are SVG strings, so their colours come from here
+  // rather than CSS; render() reads the palette for the current theme and
+  // the header's theme button redraws Insights in place.
+  const INK = {
+    dark:  { up: '#8FE0B0', down: '#FF8E80', bad: '#FF8E80', good: '#B6ACFF', gold: '#F2C46D', acc: '#8B7CF6', accT: '#B6ACFF',
+             lv: ['var(--hxYr0)', 'rgba(139,124,246,0.30)', 'rgba(139,124,246,0.55)', 'rgba(169,156,255,0.80)', '#C4BBFF'],
+             rank1: '#1A1406', rank2: '#15112A' },
+    light: { up: '#1E7B4D', down: '#C42A7C', bad: '#C42A7C', good: '#4A3AC4', gold: '#946510', acc: '#5B4BD6', accT: '#4A3AC4',
+             lv: ['var(--hxYr0)', 'rgba(91,75,214,0.25)', 'rgba(91,75,214,0.50)', 'rgba(91,75,214,0.75)', '#4A3AC4'],
+             rank1: '#FFFFFF', rank2: '#FFFFFF' }
+  };
+  const pal = () => INK[document.documentElement.classList.contains('light') ? 'light' : 'dark'];
+  const al = (hex, a) => {
+    const n = parseInt(hex.slice(1), 16);
+    return 'rgba(' + (n >> 16 & 255) + ',' + (n >> 8 & 255) + ',' + (n & 255) + ',' + a + ')';
+  };
   const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const MONF = ['January','February','March','April','May','June','July','August','September','October','November','December'];
   const WD = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 
   const css = `
   #stx-panel{
-    --hxP:#08080C; --hxC:#17171F; --hxPage:#0D0D12;
-    --hxB:rgba(255,255,255,0.055); --hxB2:rgba(255,255,255,0.05);
-    --hxLine:rgba(255,255,255,0.04); --hxLine2:rgba(255,255,255,0.07);
-    --hxTrack:rgba(255,255,255,0.045); --hxTrack2:rgba(255,255,255,0.055); --hxAvg:rgba(255,255,255,0.13);
-    --hxTile:rgba(255,255,255,0.015); --hxArc:rgba(255,255,255,0.06);
-    --hxT1:#F4F3F9; --hxT1b:#E8E7F0; --hxT1c:#C9C7D6; --hxT2:#8A879B;
-    --hxT3:#6E6B80; --hxT4:#4F4C60; --hxT5:#5E5B70; --hxFoot:#3F3D4D;
-    --hxYr0:#191921; --hxYrF:#101016;
-    position:fixed;inset:0;background:var(--hxP);z-index:80;
-    transform:translateX(100%);transition:transform .28s ease;overflow-y:auto;
-    padding:22px 14px 50px 14px;-webkit-overflow-scrolling:touch;
-    font-family:Manrope,system-ui,-apple-system,sans-serif;color:var(--hxT1b)}
+    --hxC:transparent; --hxPage:var(--bg-page);
+    --hxB:var(--line); --hxB2:var(--line); --hxLine:var(--line); --hxLine2:var(--line);
+    --hxTrack:var(--track); --hxTrack2:var(--track); --hxAvg:rgba(138,143,182,0.6);
+    --hxTile:var(--bg-card); --hxArc:var(--track);
+    --hxT1:var(--text-primary); --hxT1b:var(--text-primary); --hxT1c:var(--text-primary); --hxT2:var(--text-secondary);
+    --hxT3:var(--text-muted); --hxT4:var(--text-muted); --hxT5:var(--text-muted); --hxFoot:var(--text-muted);
+    --hxYr0:rgba(255,255,255,0.06); --hxYrF:rgba(255,255,255,0.025);
+    position:fixed;inset:0;z-index:80;background-color:var(--bg-page);background-image:var(--page-glow);background-repeat:no-repeat;
+    display:none;opacity:0;transition:opacity .18s ease;overflow-y:auto;overscroll-behavior:contain;
+    padding:calc(64px + env(safe-area-inset-top, 0px)) 16px 50px;box-sizing:border-box;-webkit-overflow-scrolling:touch;
+    font-family:Manrope,system-ui,-apple-system,sans-serif;color:var(--text-primary)}
   html.light #stx-panel{
-    --hxP:var(--bg-page,#F2F1F7); --hxC:var(--bg-card,#FFFFFF); --hxPage:var(--bg-card,#FFFFFF);
-    --hxB:rgba(24,20,50,0.10); --hxB2:rgba(24,20,50,0.08);
-    --hxLine:rgba(24,20,50,0.06); --hxLine2:rgba(24,20,50,0.10);
-    --hxTrack:rgba(24,20,50,0.07); --hxTrack2:rgba(24,20,50,0.08); --hxAvg:rgba(24,20,50,0.22);
-    --hxTile:rgba(24,20,50,0.03); --hxArc:rgba(24,20,50,0.08);
-    --hxT1:var(--text-primary,#1A1826); --hxT1b:var(--text-primary,#241F38); --hxT1c:#3A3550;
-    --hxT2:var(--text-secondary,#5A5770); --hxT3:#6E6B84; --hxT4:#8A87A0; --hxT5:#7A7790; --hxFoot:#A8A5BC;
-    --hxYr0:#E9E7F1; --hxYrF:#F2F0F8}
-  #stx-panel.open{transform:translateX(0)}
-  .hsx-page{max-width:760px;margin:0 auto;background:var(--hxPage);border:1px solid var(--hxB2);
-    border-radius:22px;padding:20px;box-sizing:border-box;box-shadow:0 40px 90px -40px rgba(0,0,0,0.9)}
-  .hsx-card{background:var(--hxC);border:1px solid var(--hxB);border-radius:16px;padding:18px;margin-top:14px}
-  .hsx-k{font:700 10px/1 Manrope;letter-spacing:0.18em;color:var(--hxT3)}
-  .hsx-k2{font:600 9.5px/1 Manrope;letter-spacing:0.12em;color:var(--hxT4)}
+    --hxAvg:rgba(100,104,137,0.6); --hxYr0:rgba(40,44,110,0.07); --hxYrF:rgba(40,44,110,0.03)}
+  /* Home and Insights are siblings: only one is in the layout at a time, so
+     Insights is a screen rather than a panel stacked over the page. It keeps
+     its own scroll container, which is what lets the home screen go on
+     scrolling the window — pull-to-refresh depends on window.scrollY. */
+  #stx-panel.is-on{display:block}
+  #stx-panel.is-visible{opacity:1}
+  @media (prefers-reduced-motion: reduce){ #stx-panel{transition:none} }
+  .hsx-page{max-width:760px;margin:0 auto;box-sizing:border-box}
+  .hsx-card{background:var(--bg-card);border:1px solid var(--card-border);border-radius:20px;padding:18px;margin-top:12px;box-shadow:var(--card-shadow)}
+  .hsx-k2{font:600 11.5px/1 Manrope;letter-spacing:0.04em;text-transform:uppercase;color:var(--text-muted)}
   .hsx-row{display:flex;align-items:center;justify-content:space-between;gap:12px}
-  .hsx-tiles{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
-  @media(min-width:640px){.hsx-tiles{grid-template-columns:repeat(4,1fr)}}
-  .hsx-back{color:var(--hxT2);font:600 12px Manrope;cursor:pointer;padding:4px 0}
-  .hsx-theme{cursor:pointer;padding:6px 13px;border-radius:999px;font:700 11px Manrope;letter-spacing:0.04em;background:var(--hxTile);border:1px solid var(--hxB);color:var(--hxT2)}
+  .hsx-tiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  @media(min-width:640px){.hsx-tiles{grid-template-columns:repeat(4,minmax(0,1fr))}}
+  .hsx-tile{background:var(--bg-card);border:1px solid var(--card-border);border-radius:20px;padding:16px;display:flex;flex-direction:column;gap:8px;box-shadow:var(--card-shadow)}
   @keyframes haloPulse{0%,100%{opacity:.5}50%{opacity:1}}
-  #stx-fab{position:fixed;right:14px;bottom:14px;z-index:70;background:#7F77DD;color:#fff;
-    border:none;border-radius:50%;width:44px;height:44px;cursor:pointer;
-    box-shadow:0 4px 14px rgba(0,0,0,.4), inset 0 1px 2px rgba(255,255,255,.25), inset 0 -2px 4px rgba(0,0,0,.3);
-    display:flex;align-items:center;justify-content:center}
-  html.light #stx-fab{
-    box-shadow:0 4px 14px rgba(24,20,50,.22), inset 0 1px 2px rgba(255,255,255,.3), inset 0 -2px 4px rgba(24,20,50,.18)}
-  #obx{position:fixed;inset:0;background:var(--bg-page);z-index:90;overflow-y:auto;
+  #obx{position:fixed;inset:0;background:var(--bg-page);z-index:200;overflow-y:auto;
     padding:24px 18px;display:none}
   #obx.show{display:block}
   .obx-wrap{max-width:420px;margin:0 auto}
@@ -103,38 +107,95 @@
   st.textContent = css;
   document.head.appendChild(st);
 
-  /* carved bars icon */
-  const STX_P = 'M6 18V11 M12 18V6 M18 18V14';
-  // mainColor defaults to the dark carve used inside the panel; the floating
-  // button passes ON_ACCENT because it always sits on brand purple.
-  const ON_ACCENT = '#FFFFFF';
-  const stxIcon = (size, mainColor) => `<svg viewBox="0 0 24 24" width="${size}" height="${size}" style="display:block">` +
-    `<g fill="none" stroke-linecap="round">` +
-    `<path d="${STX_P}" stroke="#000" stroke-opacity=".5" stroke-width="3.4" transform="translate(0,0.7)"/>` +
-    `<path d="${STX_P}" stroke="#E6E3FF" stroke-opacity=".45" stroke-width="3.4" transform="translate(0,-0.6)"/>` +
-    `<path d="${STX_P}" stroke="${mainColor || '#100E24'}" stroke-width="2.9"/>` +
-    `</g></svg>`;
-
   /* ---------- state ---------- */
   let S = null;
   let loadError = null;   // message from the last failed load(); null while loading / after success
   let inflight = null;    // promise of the load() currently running
   const UI = { mi: null, open: null, pd: null, sb: null, day: null };
 
-  /* ---------- panel + fab ---------- */
+  /* ---------- the two screens ---------- */
+  // The way between them is the header's first button (index.html), which
+  // replaced the floating button that used to sit in the corner.
   const panel = document.createElement('div');
   panel.id = 'stx-panel';
   document.body.appendChild(panel);
 
-  const fab = document.createElement('button');
-  fab.id = 'stx-fab';
-  fab.title = 'Progress';
-  fab.innerHTML = stxIcon(24, ON_ACCENT);
-  fab.onclick = openPanel;
-  document.body.appendChild(fab);
+  const home = document.getElementById('home-screen');
 
-  function openPanel() { if (!S) loadError = null; render(); panel.classList.add('open'); }
-  function closePanel() { panel.classList.remove('open'); }
+  const HT = (window.HT = window.HT || {});
+  const FADE = HT.SCREEN_FADE_MS || 180;
+  const reduced = () => (typeof HT.reducedMotion === 'function'
+    ? HT.reducedMotion()
+    : !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches));
+
+  let screen = 'home';
+  let homeScrollY = 0;          // each screen remembers where the user was
+  let pushedState = false;      // did we add a history entry for Insights?
+  let fadeTimer = null;
+
+  const isInsights = () => screen === 'insights';
+  HT.isInsightsOpen = isInsights;
+
+  const paintHeader = () => { if (typeof HT.paintHeader === 'function') HT.paintHeader(); };
+
+  function after(ms, fn) {
+    clearTimeout(fadeTimer);
+    if (reduced()) { fn(); return; }
+    fadeTimer = setTimeout(fn, ms);
+  }
+
+  // Swap which screen is in the layout. Nothing here touches the URL.
+  function swapTo(next) {
+    if (next === screen) return;
+    if (next === 'insights') {
+      homeScrollY = window.scrollY;
+      if (!S) loadError = null;
+      panel.classList.add('is-on');      // in the layout, still transparent
+      render();                          // fills it and restores its own scrollTop
+      if (home) home.classList.add('is-fading');
+      screen = 'insights';
+      paintHeader();
+      const show = () => panel.classList.add('is-visible');
+      if (reduced()) show(); else requestAnimationFrame(show);
+      after(FADE, () => { if (home) home.classList.add('is-off'); });
+    } else {
+      if (home) {
+        home.classList.remove('is-off');
+        window.scrollTo(0, homeScrollY); // back to exactly where the user was
+        const show = () => home.classList.remove('is-fading');
+        if (reduced()) show(); else requestAnimationFrame(show);
+      }
+      panel.classList.remove('is-visible');
+      screen = 'home';
+      paintHeader();
+      after(FADE, () => panel.classList.remove('is-on'));
+    }
+  }
+
+  function openPanel() {
+    if (isInsights()) return;
+    swapTo('insights');
+    // Same href, byte for byte, so ?user= and &t= survive. The entry only
+    // exists so the Android back gesture returns home instead of leaving.
+    try { history.pushState({ htScreen: 'insights' }, '', location.href); pushedState = true; }
+    catch (e) { pushedState = false; }
+  }
+
+  function closePanel() {
+    if (!isInsights()) return;
+    if (pushedState) { history.back(); return; }  // popstate does the swap
+    swapTo('home');
+  }
+
+  window.addEventListener('popstate', () => {
+    pushedState = false;
+    if (isInsights()) swapTo('home');
+  });
+
+  HT.openInsights = openPanel;
+  HT.closeInsights = closePanel;
+  // the theme button lives in the header; Insights redraws its charts in place
+  HT.renderInsights = () => { if (isInsights()) render(); };
 
   /* swipe with horizontal-scroller guard */
   let tx = null, ty = null, txTarget = null;
@@ -155,10 +216,11 @@
     if (tx === null) return;
     const dx = e.changedTouches[0].clientX - tx;
     const dy = Math.abs(e.changedTouches[0].clientY - ty);
-    if (Math.abs(dx) > 70 && dy < 60) {
-      const fromScroller = !panel.classList.contains('open') && inHorizontalScroller(txTarget);
-      if (dx < 0 && !panel.classList.contains('open') && !fromScroller) openPanel();
-      if (dx > 0 && panel.classList.contains('open')) closePanel();
+    const habits = typeof HT.isHabitsOpen === 'function' && HT.isHabitsOpen();
+    if (Math.abs(dx) > 70 && dy < 60 && !habits) {
+      const fromScroller = !isInsights() && inHorizontalScroller(txTarget);
+      if (dx < 0 && !isInsights() && !fromScroller) openPanel();
+      if (dx > 0 && isInsights()) closePanel();
     }
     tx = null;
   }, { passive: true });
@@ -189,7 +251,7 @@
     if (!S) {
       if (loadError) {
         // one failed attempt -> show the error and wait for the user; never re-fetch on our own
-        panel.innerHTML = '<div class="hsx-page"><div class="hsx-back">← back</div>' +
+        panel.innerHTML = '<div class="hsx-page">' +
           '<div style="padding:40px 24px;text-align:center">' +
           '<div style="font:700 15px Manrope;color:var(--hxT1);margin-bottom:8px">Couldn’t load your stats</div>' +
           '<div style="font:500 12px/1.6 Manrope;color:var(--hxT3);margin-bottom:22px">Check your connection and try again. If it keeps failing, make sure all twelve month tabs still exist in your sheet.</div>' +
@@ -201,13 +263,13 @@
         if (rb) rb.onclick = () => { loadError = null; render(); };
         return;
       }
-      panel.innerHTML = '<div class="hsx-page"><div class="hsx-back">← back</div><div style="padding:30px;text-align:center;color:var(--hxT3);font:600 12px Manrope">Loading…</div></div>';
+      panel.innerHTML = '<div class="hsx-page"><div style="padding:30px;text-align:center;color:var(--hxT3);font:600 12px Manrope">Loading…</div></div>';
       bindBack(); load().then(() => render()); return;
     }
     if (S.outOfYear) {
-      panel.innerHTML = '<div class="hsx-page"><div class="hsx-back">← back</div>' +
+      panel.innerHTML = '<div class="hsx-page">' +
         '<div style="padding:40px 24px;text-align:center">' +
-        '<div style="font-size:34px;margin-bottom:14px">🗓️</div>' +
+        '<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--accent-text)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:block;margin:0 auto 14px"><rect x="3.5" y="5" width="17" height="15" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>' +
         '<div style="font:500 13px/1.7 Manrope;color:var(--hxT2)">' + esc(S.message) + '</div>' +
         '</div></div>';
       bindBack(); return;
@@ -249,13 +311,14 @@
     while (pd.length < 7) pd.push(0);
     const bestD = pd.indexOf(Math.max.apply(null, pd));
 
+    const P = pal();
     const bestPrev = curM > 0 ? Math.max.apply(null, MV.slice(0, curM)) : null;
-    const vsTile = bestPrev !== null ? ((MV[curM] - bestPrev >= 0 ? '+' : '') + (MV[curM] - bestPrev)) : '–';
+    const vsTile = bestPrev !== null ? ((MV[curM] - bestPrev >= 0 ? '+' : '−') + Math.abs(MV[curM] - bestPrev)) : '–';
     const tiles = [
-      { v: S.perfectDays, l: 'PERFECT DAYS', c: '#F4F3F9' },
-      { v: (S.checksYTD || 0).toLocaleString(), l: 'HABIT WINS', c: '#F4F3F9' },
-      { v: S.comebacks, l: 'COMEBACKS', c: '#F4F3F9' },
-      { v: vsTile, l: 'VS BEST MONTH', c: GLD }
+      { v: S.perfectDays, l: 'Perfect days', c: 'var(--text-primary)' },
+      { v: (S.checksYTD || 0).toLocaleString(), l: 'Habit wins', c: 'var(--text-primary)' },
+      { v: S.comebacks, l: 'Comebacks', c: 'var(--text-primary)' },
+      { v: vsTile, l: 'Vs best month', c: P.gold }
     ];
 
     /* momentum */
@@ -281,22 +344,22 @@
       <svg width="100%" height="152" viewBox="0 0 ${cw} ${mh}" preserveAspectRatio="none" style="display:block">
       <defs>
         <linearGradient id="hsFill" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stop-color="${PUR}" stop-opacity="0.40"/><stop offset="0.5" stop-color="${PUR}" stop-opacity="0.13"/><stop offset="1" stop-color="${PUR}" stop-opacity="0"/>
+          <stop offset="0" stop-color="${P.acc}" stop-opacity="0.36"/><stop offset="1" stop-color="${P.acc}" stop-opacity="0"/>
         </linearGradient>
-        <linearGradient id="hsLine" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="${PUR}"/><stop offset="1" stop-color="${LAV}"/></linearGradient>
-        <filter id="hsBlur" x="-10%" y="-60%" width="120%" height="220%"><feGaussianBlur stdDeviation="6"/></filter>
+        <linearGradient id="hsLine" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="${P.acc}"/><stop offset="1" stop-color="${P.accT}"/></linearGradient>
       </defs>
       ${[0.34,0.67,1].map(t => `<line x1="0" y1="${(top + t*(base-top)).toFixed(1)}" x2="${cw}" y2="${(top + t*(base-top)).toFixed(1)}" stroke="var(--hxLine)"/>`).join('')}
       <path d="${momArea}" fill="url(#hsFill)"/>
-      <path d="${momPath}" fill="none" stroke="url(#hsLine)" stroke-width="7" opacity="0.22" filter="url(#hsBlur)" stroke-linecap="round"/>
-      <path d="${momPath}" fill="none" stroke="url(#hsLine)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
-      <line x1="${pts[mi].x.toFixed(1)}" y1="${pts[mi].y.toFixed(1)}" x2="${pts[mi].x.toFixed(1)}" y2="${base}" stroke="rgba(175,169,236,0.22)" stroke-dasharray="2 3"/>
-      <circle cx="${pts[mi].x.toFixed(1)}" cy="${pts[mi].y.toFixed(1)}" r="12" fill="rgba(175,169,236,0.14)" style="animation:haloPulse 2.8s ease-in-out infinite"/>
-      <circle cx="${pts[mi].x.toFixed(1)}" cy="${pts[mi].y.toFixed(1)}" r="5.4" fill="var(--hxPage)" stroke="${LAV}" stroke-width="2.4"/>
+      <path d="${momPath}" fill="none" stroke="url(#hsLine)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+      <line x1="${pts[mi].x.toFixed(1)}" y1="${pts[mi].y.toFixed(1)}" x2="${pts[mi].x.toFixed(1)}" y2="${base}" stroke="${al(P.accT, 0.3)}" stroke-dasharray="2 3"/>
       ${MV.map((m,i)=>`<rect data-mi="${i}" x="${(i*step).toFixed(1)}" y="0" width="${step.toFixed(1)}" height="${mh}" fill="transparent" style="cursor:pointer"/>`).join('')}
       </svg>
-      <div style="display:flex;margin-top:8px">
-        ${MV.map((m,i)=>`<div style="flex:1 1 0;text-align:center;font:600 10px Manrope;letter-spacing:0.04em;color:${i===mi?LAV:'#4F4C60'}">${MON[i]}</div>`).join('')}
+      <div style="position:absolute;left:${(pts[mi].x / cw * 100).toFixed(2)}%;top:${(pts[mi].y).toFixed(1)}px;width:0;height:0;pointer-events:none">
+        <div style="position:absolute;left:-12px;top:-12px;width:24px;height:24px;border-radius:999px;background:${al(P.accT, 0.16)};animation:haloPulse 2.8s ease-in-out infinite"></div>
+        <div style="position:absolute;left:-6.6px;top:-6.6px;width:13.2px;height:13.2px;box-sizing:border-box;border-radius:999px;background:var(--bg-page);border:2.4px solid ${P.accT}"></div>
+      </div>`;
+    const momLabels = `<div style="display:flex;margin-top:8px">
+        ${MV.map((m,i)=>`<div style="flex:1 1 0;text-align:center;font:600 10.5px Manrope;color:${i===mi?P.accT:'var(--text-muted)'}">${MON[i]}</div>`).join('')}
       </div>`;
 
     /* habit momentum */
@@ -310,27 +373,26 @@
         const path = smooth(sp);
         spark = `<div style="padding:2px 0 18px">
           <svg width="100%" height="46" viewBox="0 0 ${sw} 46" preserveAspectRatio="none" style="display:block">
-            <defs><linearGradient id="sk${i}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${PUR}" stop-opacity="0.3"/><stop offset="1" stop-color="${PUR}" stop-opacity="0"/></linearGradient></defs>
+            <defs><linearGradient id="sk${i}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${P.acc}" stop-opacity="0.3"/><stop offset="1" stop-color="${P.acc}" stop-opacity="0"/></linearGradient></defs>
             <path d="${path} L ${sw} 40 L 0 40 Z" fill="url(#sk${i})"/>
-            <path d="${path}" fill="none" stroke="#8B84E2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            <circle cx="${sp[sp.length-1].x.toFixed(1)}" cy="${sp[sp.length-1].y.toFixed(1)}" r="3.4" fill="${LAV}"/>
+            <path d="${path}" fill="none" stroke="${P.accT}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
           </svg>
           <div style="display:flex;gap:18px;margin-top:11px">
-            <div style="font:500 11px/1.5 Manrope;color:var(--hxT2)">Best streak <span style="color:var(--hxT1b);font-weight:700">${h.b} days</span></div>
-            <div style="font:500 11px/1.5 Manrope;color:var(--hxT2)">All-time <span style="color:var(--hxT1b);font-weight:700">${h.all}%</span></div>
+            <div style="font:500 12px/1.5 Manrope;color:var(--text-secondary)">Best streak <span style="color:var(--text-primary);font-weight:700">${h.b} days</span></div>
+            <div style="font:500 12px/1.5 Manrope;color:var(--text-secondary)">All-time <span style="color:var(--text-primary);font-weight:700">${h.all}%</span></div>
           </div></div>`;
       }
-      const col = h.d > 0 ? GRN : (h.d < 0 ? RED : 'var(--hxT3)');
-      const dot = h.p >= 75 ? 'rgba(151,196,89,0.85)' : (h.p >= 55 ? 'rgba(250,199,117,0.8)' : 'rgba(240,149,149,0.8)');
-      return `<div style="border-bottom:1px solid var(--hxB2)">
-        <div data-open="${i}" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:15px 0;cursor:pointer">
-          <div style="display:flex;align-items:center;gap:9px;min-width:0">
-            <div style="width:5px;height:5px;border-radius:999px;flex:none;background:${dot}"></div>
-            <div style="font:600 13.5px/1.4 Manrope;color:var(--hxT1b);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${h.n}</div>
+      const col = h.d > 0 ? P.up : (h.d < 0 ? P.down : 'var(--text-muted)');
+      const dot = h.p >= 75 ? P.good : (h.p >= 55 ? P.gold : P.bad);
+      return `<div style="border-bottom:1px solid var(--line)">
+        <div data-open="${i}" style="display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:48px;cursor:pointer">
+          <div style="display:flex;align-items:center;gap:10px;min-width:0">
+            <div style="width:7px;height:7px;border-radius:999px;flex:none;background:${dot}"></div>
+            <div style="font:600 14px/1.4 Manrope;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(h.n)}</div>
           </div>
-          <div style="display:flex;align-items:center;gap:11px;flex:none">
-            <div style="font:700 13.5px/1 Manrope;color:var(--hxT1c);font-variant-numeric:tabular-nums">${h.p}%</div>
-            <div style="font:700 11.5px/1 Manrope;color:${col};min-width:34px;text-align:right">${h.d >= 0 ? '↑ ' : '↓ '}${Math.abs(h.d)}</div>
+          <div style="display:flex;align-items:center;gap:12px;flex:none">
+            <div style="font:700 14px/1 Manrope;color:var(--text-primary);font-variant-numeric:tabular-nums">${h.p}%</div>
+            <div style="font:700 12px/1 Manrope;color:${col};min-width:36px;text-align:right">${h.d >= 0 ? '↑ ' : '↓ '}${Math.abs(h.d)}</div>
           </div>
         </div>${spark}</div>`;
     }).join('');
@@ -341,7 +403,7 @@
 
     /* power days */
     const sel = UI.pd == null ? bestD : UI.pd;
-    const tX = 40, tW = cw - 96, rowH = 32, pdH = 7 * rowH;
+    const tX = 40, tW = cw - 96, rowH = 34, pdH = 7 * rowH;
     const lanes = pd.map((val, i) => ({ i, val })).sort((a, b) => b.val - a.val).map((o, ri) => {
       const y = ri * rowH + 4;
       return { i: o.i, val: o.val, y, isB: o.i === bestD, isS: o.i === sel };
@@ -353,12 +415,13 @@
     const means = H.map(h => h.row.reduce((a,b)=>a+b,0) / 7);
     const weak = means.length ? means.indexOf(Math.min.apply(null, means)) : 0;
     const focusIdx = UI.sb == null ? weak : UI.sb;
+    const slopeOn = UI.sb == null ? P.bad : P.accT;
 
     /* year grid */
     const gap = 1.6;
     const cell = (cw + gap) / 53 - gap;
     const jan1wd = (new Date(yr, 0, 1).getDay() + 6) % 7;
-    const lv = ['var(--hxYr0)','rgba(151,196,89,0.20)','rgba(151,196,89,0.38)','rgba(151,196,89,0.62)',GRN];
+    const lv = P.lv;
     const yrCells = [];
     for (let i = 0; i < 366; i++) {
       const dt = new Date(yr, 0, 1 + i);
@@ -378,163 +441,158 @@
     const yrH = (7 * (cell + gap) - gap).toFixed(1);
     const selDay = UI.day != null ? yrCells.find(c => c.iso === UI.day) : null;
     const yrNote = selDay ? selDay.iso + ' · ' + Math.round((selDay.p || 0) * 100) + '%' : (S.daily || []).length + ' days logged';
-    const yrCol = selDay ? ((selDay.p || 0) >= 0.8 ? GRN : ((selDay.p || 0) >= 0.5 ? 'var(--hxT1c)' : RED)) : 'var(--hxT2)';
+    const yrCol = selDay ? ((selDay.p || 0) >= 0.8 ? P.up : ((selDay.p || 0) >= 0.5 ? 'var(--text-primary)' : P.bad)) : 'var(--text-secondary)';
 
     /* leaderboard */
     const badge = [
-      { bg: GLD, fg: '#17171F', bd: GLD },
-      { bg: 'rgba(175,169,236,0.9)', fg: '#17171F', bd: 'rgba(175,169,236,0.9)' },
-      { bg: 'rgba(175,169,236,0.14)', fg: LAV, bd: 'rgba(175,169,236,0.4)' }
+      { bg: P.gold, fg: P.rank1, bd: P.gold },
+      { bg: P.accT, fg: P.rank2, bd: P.accT },
+      { bg: al(P.acc, 0.16), fg: P.accT, bd: al(P.acc, 0.45) }
     ];
     const board = H.map(h => ({ n: h.n, b: h.b, all: h.all }))
       .sort((a, b) => b.all - a.all)
       .map((h, i) => Object.assign(h, { rank: i + 1,
         bg: badge[i] ? badge[i].bg : 'transparent',
-        fg: badge[i] ? badge[i].fg : 'var(--hxT5)',
-        bd: badge[i] ? badge[i].bd : 'var(--hxB)',
-        pc: i === 0 ? GLD : 'var(--hxT1c)' }));
+        fg: badge[i] ? badge[i].fg : 'var(--text-muted)',
+        bd: badge[i] ? badge[i].bd : 'var(--line)',
+        pc: i === 0 ? P.gold : 'var(--text-primary)' }));
 
     const monthsIn = curM + 1;
     const scrollY = panel.scrollTop;
+    const avgX = tX + tW * score / 100;
 
     panel.innerHTML = `
     <div class="hsx-page">
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:2px 2px 18px">
-      <div style="display:flex;flex-direction:column;gap:7px">
-        <div class="hsx-back">← back</div>
-        <div style="display:flex;align-items:center;gap:9px">${stxIcon(20, PUR)}
-          <div style="font:800 25px/1 Manrope;letter-spacing:-0.03em;color:var(--hxT1)">${monthsIn === 1 ? 'First month in' : monthsIn + ' months in'}</div>
-        </div>
-        <div style="font:500 12px/1.4 Manrope;color:var(--hxT2)">Jan 1 – ${MON[curM]} ${now.getDate()}, ${yr} · ${H.length} habits</div>
-      </div>
-      <div class="hsx-theme" id="hsx-theme">${document.documentElement.classList.contains('light') ? '☾ Dark' : '☀ Light'}</div>
+      <div style="display:flex;flex-direction:column;gap:6px;padding:18px 2px 16px">
+        <div style="font:800 30px/1.05 Manrope;letter-spacing:-0.035em;color:var(--text-primary)">${monthsIn === 1 ? 'First month in' : monthsIn + ' months in'}</div>
+        <div style="font:500 13px/1.4 Manrope;color:var(--text-secondary)">Jan 1 – ${MON[curM]} ${now.getDate()}, ${yr} · ${H.length} habits</div>
       </div>
 
       <div class="hsx-tiles">
-        ${tiles.map(t => `<div style="background:var(--hxTile);border:1px solid var(--hxB2);border-radius:14px;padding:15px 14px;display:flex;flex-direction:column;gap:7px">
-          <div style="font:800 23px/1 Manrope;letter-spacing:-0.03em;color:${t.c}">${t.v}</div>
-          <div style="font:700 9px/1.3 Manrope;letter-spacing:0.14em;color:var(--hxT5)">${t.l}</div>
+        ${tiles.map(t => `<div class="hsx-tile">
+          <div style="font:800 30px/1 Manrope;letter-spacing:-0.04em;color:${t.c};font-variant-numeric:tabular-nums">${t.v}</div>
+          <div style="font:700 10px/1.3 Manrope;letter-spacing:0.14em;text-transform:uppercase;color:var(--text-muted)">${t.l}</div>
         </div>`).join('')}
       </div>
 
-      <div class="hsx-card" style="padding:18px 18px 14px">
-        <div class="hsx-row"><div class="hsx-k">MOMENTUM</div><div class="hsx-k2">MONTHLY COMPLETION</div></div>
-        <div style="display:flex;align-items:flex-end;gap:10px;margin:16px 0 0">
-          <div style="font:800 46px/0.9 Manrope;letter-spacing:-0.04em;color:var(--hxT1)">${MV[mi]}<span style="font:700 19px Manrope;color:var(--hxT2)">%</span></div>
-          <div style="display:flex;align-items:center;gap:5px;padding:5px 10px;border-radius:999px;font:700 11.5px Manrope;background:${dl >= 0 ? 'rgba(151,196,89,0.12)' : 'rgba(240,149,149,0.11)'};color:${dl >= 0 ? GRN : RED};margin-bottom:7px">${dl >= 0 ? '↑ ' : '↓ '}${Math.abs(dl)} pts</div>
+      <div class="hsx-card" style="padding:18px 18px 16px">
+        <div class="hsx-row"><div class="ink-k">Momentum</div><div class="hsx-k2">Monthly completion</div></div>
+        <div style="display:flex;align-items:flex-end;gap:10px;margin-top:16px">
+          <div style="font:800 48px/0.95 Manrope;letter-spacing:-0.045em;color:var(--text-primary);font-variant-numeric:tabular-nums">${MV[mi]}<span style="font-size:20px;font-weight:700;margin-left:2px;color:var(--accent-text)">%</span></div>
+          <div style="display:flex;align-items:center;padding:5px 10px;border-radius:999px;font:700 12px Manrope;background:${al(dl >= 0 ? P.up : P.down, 0.13)};color:${dl >= 0 ? P.up : P.down};margin-bottom:6px">${dl >= 0 ? '↑ ' : '↓ '}${Math.abs(dl)} pts</div>
         </div>
-        <div style="font:500 12px/1 Manrope;color:var(--hxT2);margin:9px 0 10px">${hSub}</div>
-        ${momSvg}
+        <div style="font:500 12.5px/1.3 Manrope;color:var(--text-secondary);margin:10px 0 8px">${hSub}</div>
+        <div style="position:relative">${momSvg}</div>
+        ${momLabels}
       </div>
 
       <div class="hsx-card" style="padding:18px 18px 8px">
-        <div class="hsx-row"><div class="hsx-k">HABIT MOMENTUM</div><div class="hsx-k2">VS ${curM > 0 ? MONF[curM-1].toUpperCase() : 'LAST MONTH'}</div></div>
+        <div class="hsx-row"><div class="ink-k">Habit momentum</div><div class="hsx-k2">Vs ${curM > 0 ? MONF[curM-1] : 'last month'}</div></div>
         <div style="display:flex;flex-direction:column;margin-top:6px">${habitRows}</div>
       </div>
 
       <div class="hsx-card">
-        <div class="hsx-k">CONSISTENCY</div>
+        <div class="ink-k">Consistency</div>
         <div style="display:flex;align-items:center;gap:18px;margin-top:12px;flex-wrap:wrap">
           <div style="position:relative;width:146px;height:132px;flex:none">
             <svg width="146" height="132" viewBox="0 0 146 132" style="display:block;overflow:visible">
-              <defs><linearGradient id="hsArc" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="${PUR}"/><stop offset="1" stop-color="${LAV}"/></linearGradient></defs>
-              <path d="${arcPath(CX, CY, R, A0, A0 + SWP)}" fill="none" stroke="var(--hxArc)" stroke-width="10" stroke-linecap="round"/>
+              <defs><linearGradient id="hsArc" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="${P.acc}"/><stop offset="1" stop-color="${P.accT}"/></linearGradient></defs>
+              <path d="${arcPath(CX, CY, R, A0, A0 + SWP)}" fill="none" stroke="var(--track)" stroke-width="10" stroke-linecap="round"/>
               <path d="${arcPath(CX, CY, R, A0, A0 + SWP * Math.min(100, score) / 100)}" fill="none" stroke="url(#hsArc)" stroke-width="10" stroke-linecap="round"/>
-              <circle cx="${tip.x.toFixed(2)}" cy="${tip.y.toFixed(2)}" r="9" fill="rgba(175,169,236,0.16)"/>
-              <circle cx="${tip.x.toFixed(2)}" cy="${tip.y.toFixed(2)}" r="3.4" fill="#DAD6FA"/>
+              <circle cx="${tip.x.toFixed(2)}" cy="${tip.y.toFixed(2)}" r="3.4" fill="#FFFFFF"/>
             </svg>
-            <div style="position:absolute;left:0;top:0;width:146px;height:124px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;pointer-events:none">
-              <div style="font:800 34px/1 Manrope;letter-spacing:-0.04em;color:var(--hxT1)">${score}</div>
-              <div style="font:700 9px/1 Manrope;letter-spacing:0.18em;color:var(--hxT3)">ON PLAN</div>
+            <div style="position:absolute;left:0;top:0;width:146px;height:124px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;pointer-events:none">
+              <div style="font:800 34px/1 Manrope;letter-spacing:-0.04em;color:var(--text-primary)">${score}</div>
+              <div style="font:700 9.5px/1 Manrope;letter-spacing:0.16em;color:var(--text-muted)">ON PLAN</div>
             </div>
           </div>
-          <div style="display:flex;flex-direction:column;gap:14px;flex:1 1 180px;min-width:0">
-            <div style="display:flex;flex-direction:column;gap:6px">
-              <div style="display:flex;align-items:baseline;justify-content:space-between"><div style="font:600 11.5px Manrope;color:var(--hxT2)">Weekdays</div><div style="font:800 15px Manrope;color:var(--hxT1b)">${wkday}%</div></div>
-              <div style="height:5px;border-radius:999px;background:var(--hxTrack2);overflow:hidden"><div style="width:${wkday}%;height:100%;border-radius:999px;background:${GRN}"></div></div>
+          <div style="display:flex;flex-direction:column;gap:14px;flex:1 1 150px;min-width:0">
+            <div style="display:flex;flex-direction:column;gap:7px">
+              <div style="display:flex;align-items:baseline;justify-content:space-between"><div style="font:600 12.5px Manrope;color:var(--text-secondary)">Weekdays</div><div style="font:800 15px Manrope;color:var(--text-primary)">${wkday}%</div></div>
+              <div style="height:6px;border-radius:999px;background:var(--track);overflow:hidden"><div style="width:${wkday}%;height:100%;border-radius:999px;background:${P.good}"></div></div>
             </div>
-            <div style="display:flex;flex-direction:column;gap:6px">
-              <div style="display:flex;align-items:baseline;justify-content:space-between"><div style="font:600 11.5px Manrope;color:var(--hxT2)">Weekends</div><div style="font:800 15px Manrope;color:var(--hxT1b)">${wkend}%</div></div>
-              <div style="height:5px;border-radius:999px;background:var(--hxTrack2);overflow:hidden"><div style="width:${wkend}%;height:100%;border-radius:999px;background:${RED}"></div></div>
+            <div style="display:flex;flex-direction:column;gap:7px">
+              <div style="display:flex;align-items:baseline;justify-content:space-between"><div style="font:600 12.5px Manrope;color:var(--text-secondary)">Weekends</div><div style="font:800 15px Manrope;color:var(--text-primary)">${wkend}%</div></div>
+              <div style="height:6px;border-radius:999px;background:var(--track);overflow:hidden"><div style="width:${wkend}%;height:100%;border-radius:999px;background:${P.bad}"></div></div>
             </div>
-            <div style="font:600 11px/1.4 Manrope;color:${wkday - wkend > 0 ? RED : GRN};white-space:nowrap">${wkday - wkend > 0 ? 'Weekend dip · ' + (wkday - wkend) + ' pts' : 'Weekend lift · ' + (wkend - wkday) + ' pts'}</div>
+            <div style="font:600 12px/1.4 Manrope;color:${wkday - wkend > 0 ? P.bad : P.up};white-space:nowrap">${wkday - wkend > 0 ? 'Weekend dip · ' + (wkday - wkend) + ' pts' : 'Weekend lift · ' + (wkend - wkday) + ' pts'}</div>
           </div>
         </div>
       </div>
 
       <div class="hsx-card" style="padding:18px 18px 12px">
-        <div class="hsx-row"><div class="hsx-k">POWER DAYS</div>
-          <div style="padding:5px 10px;border-radius:999px;background:${sel === bestD ? 'rgba(250,199,117,0.12)' : 'rgba(175,169,236,0.12)'};font:700 11px Manrope;color:${sel === bestD ? GLD : LAV}">${UI.pd == null ? 'Best · ' : ''}${WD[sel]} ${pd[sel]}%</div>
+        <div class="hsx-row"><div class="ink-k">Power days</div>
+          <div style="padding:5px 10px;border-radius:999px;background:${sel === bestD ? al(P.gold, 0.13) : al(P.acc, 0.13)};font:700 11.5px Manrope;color:${sel === bestD ? P.gold : P.accT}">${UI.pd == null ? 'Best · ' : ''}${WD[sel]} ${pd[sel]}%</div>
         </div>
         <div style="position:relative;height:13px;margin-top:16px">
-          <div style="position:absolute;left:${((tX + tW * score / 100) / cw * 100).toFixed(1)}%;top:0;transform:translateX(-50%);font:700 8.5px/1 Manrope;letter-spacing:0.14em;color:var(--hxT4);white-space:nowrap">AVG ${score}</div>
+          <div style="position:absolute;left:${(avgX / cw * 100).toFixed(1)}%;top:0;transform:translateX(-50%);font:700 9px/1 Manrope;letter-spacing:0.14em;color:var(--text-muted);white-space:nowrap">AVG ${score}</div>
         </div>
         <div style="position:relative">
           <svg width="100%" height="${pdH}" viewBox="0 0 ${cw} ${pdH}" preserveAspectRatio="none" style="display:block">
-            <line x1="${(tX + tW * score / 100).toFixed(1)}" y1="0" x2="${(tX + tW * score / 100).toFixed(1)}" y2="${pdH}" stroke="var(--hxAvg)" stroke-dasharray="2 4"/>
+            <line x1="${avgX.toFixed(1)}" y1="0" x2="${avgX.toFixed(1)}" y2="${pdH}" stroke="var(--hxAvg)" stroke-dasharray="2 4"/>
             ${lanes.map(o => `<g data-pd="${o.i}" style="cursor:pointer">
-              <rect x="0" y="${o.y - 10}" width="${cw}" height="32" fill="transparent"/>
-              <rect x="${tX}" y="${o.y}" width="${tW.toFixed(1)}" height="12" rx="6" fill="var(--hxTrack)"/>
-              <rect x="${tX}" y="${o.y}" width="${(tW * o.val / 100).toFixed(1)}" height="12" rx="6" fill="${o.isB ? GLD : (o.isS ? LAV : 'rgba(127,119,221,0.40)')}"/>
+              <rect x="0" y="${o.y - 11}" width="${cw}" height="${rowH}" fill="transparent"/>
+              <rect x="${tX}" y="${o.y}" width="${tW.toFixed(1)}" height="12" rx="6" fill="var(--track)"/>
+              <rect x="${tX}" y="${o.y}" width="${(tW * o.val / 100).toFixed(1)}" height="12" rx="6" fill="${o.isB ? P.gold : (o.isS ? P.accT : al(P.acc, 0.45))}"/>
             </g>`).join('')}
           </svg>
-          ${lanes.map(o => `<div style="position:absolute;left:0;top:${((o.y + 6) / pdH * 100).toFixed(1)}%;transform:translateY(-50%);font:700 11px/1 Manrope;letter-spacing:0.06em;color:${o.isB || o.isS ? 'var(--hxT1c)' : 'var(--hxT5)'};pointer-events:none">${WD[o.i].toUpperCase()}</div>`).join('')}
-          ${lanes.map(o => `<div style="position:absolute;right:0;top:${((o.y + 6) / pdH * 100).toFixed(1)}%;transform:translateY(-50%);font:800 12px/1 Manrope;color:${o.isB ? GLD : (o.isS ? LAV : 'var(--hxT2)')};pointer-events:none">${o.val}%</div>`).join('')}
+          ${lanes.map(o => `<div style="position:absolute;left:0;top:${((o.y + 6) / pdH * 100).toFixed(1)}%;transform:translateY(-50%);font:700 11.5px/1 Manrope;letter-spacing:0.04em;color:${o.isB || o.isS ? 'var(--text-primary)' : 'var(--text-muted)'};pointer-events:none">${WD[o.i]}</div>`).join('')}
+          ${lanes.map(o => `<div style="position:absolute;right:0;top:${((o.y + 6) / pdH * 100).toFixed(1)}%;transform:translateY(-50%);font:800 12.5px/1 Manrope;color:${o.isB ? P.gold : (o.isS ? P.accT : 'var(--text-secondary)')};pointer-events:none">${o.val}%</div>`).join('')}
         </div>
       </div>
 
       <div class="hsx-card">
-        <div class="hsx-row"><div class="hsx-k">WHERE HABITS BREAK</div>
-          <div style="font:600 11px/1 Manrope;color:${UI.sb == null ? 'var(--hxT2)' : LAV}">${UI.sb == null ? (H[weak] ? 'Lowest line: ' + H[weak].n : '') : H[UI.sb].n + ' · low ' + Math.min.apply(null, H[UI.sb].row) + '%'}</div>
+        <div class="hsx-row"><div class="ink-k">Where habits break</div>
+          <div style="font:600 11.5px/1.2 Manrope;text-align:right;color:${UI.sb == null ? 'var(--text-secondary)' : P.accT}">${UI.sb == null ? (H[weak] ? 'Lowest line: ' + esc(H[weak].n) : '') : esc(H[UI.sb].n) + ' · low ' + Math.min.apply(null, H[UI.sb].row) + '%'}</div>
         </div>
         <div style="position:relative;margin-top:14px">
           <svg width="100%" height="164" viewBox="0 0 ${cw} 164" preserveAspectRatio="none" style="display:block">
-            <rect x="${(px5 + 4 * sx5 - sx5 * 0.5).toFixed(1)}" y="0" width="${(sx5 * 2).toFixed(1)}" height="150" rx="10" fill="rgba(240,149,149,0.055)"/>
-            <line x1="0" y1="${y5(score).toFixed(1)}" x2="${cw}" y2="${y5(score).toFixed(1)}" stroke="var(--hxLine2)" stroke-dasharray="2 4"/>
+            <rect x="${(px5 + 4 * sx5 - sx5 * 0.5).toFixed(1)}" y="0" width="${(sx5 * 2).toFixed(1)}" height="150" rx="10" fill="${al(P.bad, 0.06)}"/>
+            <line x1="0" y1="${y5(score).toFixed(1)}" x2="${cw}" y2="${y5(score).toFixed(1)}" stroke="var(--hxAvg)" stroke-dasharray="2 4"/>
             ${H.map((h, i) => {
               const p = smooth(h.row.map((v, j) => ({ x: px5 + j * sx5, y: y5(v) })));
               const on = i === focusIdx;
-              return `<path d="${p}" fill="none" stroke="${on ? (UI.sb == null ? RED : LAV) : (UI.sb == null ? 'rgba(127,119,221,0.26)' : 'rgba(127,119,221,0.13)')}" stroke-width="${on ? 2.4 : 1.4}" stroke-linecap="round" stroke-linejoin="round"/>`;
+              return `<path d="${p}" fill="none" stroke="${on ? slopeOn : al(P.acc, UI.sb == null ? 0.30 : 0.15)}" stroke-width="${on ? 2.4 : 1.4}" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>`;
             }).join('')}
-            ${H[focusIdx] ? H[focusIdx].row.map((v, j) => `<circle cx="${(px5 + j * sx5).toFixed(1)}" cy="${y5(v).toFixed(1)}" r="3.2" fill="${UI.sb == null ? RED : LAV}"/>`).join('') : ''}
           </svg>
-          <div style="position:absolute;left:0;top:${(y5(score) / 164 * 100).toFixed(1)}%;transform:translateY(-50%);font:700 8px/1 Manrope;letter-spacing:0.14em;color:var(--hxT4);background:var(--hxC);padding-right:5px">AVG</div>
+          ${H[focusIdx] ? H[focusIdx].row.map((v, j) => `<div style="position:absolute;left:${((px5 + j * sx5) / cw * 100).toFixed(2)}%;top:${y5(v).toFixed(1)}px;width:7px;height:7px;margin:-3.5px 0 0 -3.5px;border-radius:999px;background:${slopeOn};pointer-events:none"></div>`).join('') : ''}
+          <div style="position:absolute;left:0;top:${y5(score).toFixed(1)}px;transform:translateY(-50%);font:700 8.5px/1 Manrope;letter-spacing:0.14em;color:var(--text-muted);padding-right:5px">AVG</div>
         </div>
         <div style="display:flex">
-          ${WD.map((w, i) => `<div style="flex:1 1 0;text-align:center;font:700 10px/1 Manrope;letter-spacing:0.06em;color:${i >= 4 && i <= 5 ? 'var(--hxT2)' : '#4F4C60'}">${w.slice(0,2).toUpperCase()}</div>`).join('')}
+          ${WD.map((w, i) => `<div style="flex:1 1 0;text-align:center;font:700 10.5px/1 Manrope;letter-spacing:0.06em;color:${i >= 4 && i <= 5 ? 'var(--text-secondary)' : 'var(--text-muted)'}">${w.slice(0,2).toUpperCase()}</div>`).join('')}
         </div>
         <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:16px">
           ${H.map((h, i) => {
-            const on = i === focusIdx;
-            return `<div data-sb="${i}" style="cursor:pointer;padding:6px 10px;border-radius:999px;font:600 10.5px/1 Manrope;background:${on ? 'rgba(175,169,236,0.14)' : 'transparent'};color:${on ? LAV : 'var(--hxT3)'};border:1px solid ${on ? 'rgba(175,169,236,0.35)' : 'var(--hxB)'}">${h.n}</div>`;
+            const on = i === focusIdx && UI.sb != null;
+            return `<button type="button" data-sb="${i}" style="cursor:pointer;height:32px;padding:0 12px;border-radius:999px;font:600 11.5px/1 Manrope;background:${on ? al(P.acc, 0.14) : 'transparent'};color:${on ? P.accT : 'var(--text-secondary)'};border:1px solid ${on ? al(P.acc, 0.45) : 'var(--line)'}">${esc(h.n)}</button>`;
           }).join('')}
         </div>
       </div>
 
       <div class="hsx-card">
-        <div class="hsx-row"><div class="hsx-k">YOUR YEAR</div><div style="font:600 11px/1 Manrope;color:${yrCol}">${yrNote}</div></div>
+        <div class="hsx-row"><div class="ink-k">Your year</div><div style="font:600 11.5px/1 Manrope;color:${yrCol}">${yrNote}</div></div>
         <div style="display:flex;margin:16px 0 6px">
-          ${MON.map(m => `<div style="flex:1 1 0;font:700 9px Manrope;letter-spacing:0.1em;color:var(--hxT4)">${m[0]}</div>`).join('')}
+          ${MON.map(m => `<div style="flex:1 1 0;font:700 9.5px Manrope;letter-spacing:0.1em;color:var(--text-muted)">${m[0]}</div>`).join('')}
         </div>
         <svg width="100%" height="${yrH}" viewBox="0 0 ${cw} ${yrH}" preserveAspectRatio="none" style="display:block">
           ${yrCells.map(c => `<rect data-day="${c.future ? '' : c.iso}" x="${c.x}" y="${c.y}" width="${cell.toFixed(2)}" height="${cell.toFixed(2)}" rx="${(cell * 0.28).toFixed(2)}" fill="${c.fill}"${c.future ? '' : ' style="cursor:pointer"'}/>`).join('')}
         </svg>
       </div>
 
-      <div class="hsx-card" style="padding:18px 18px 10px">
-        <div class="hsx-row"><div class="hsx-k">LEADERBOARD</div><div class="hsx-k2">ALL TIME</div></div>
+      <div class="hsx-card" style="padding:18px 18px 8px">
+        <div class="hsx-row"><div class="ink-k">Leaderboard</div><div class="hsx-k2">All time</div></div>
         <div style="display:flex;flex-direction:column;margin-top:4px">
-          ${board.map(b => `<div style="display:flex;align-items:center;gap:12px;padding:13px 0;border-bottom:1px solid var(--hxB2)">
-            <div style="width:23px;height:23px;border-radius:999px;flex:none;display:flex;align-items:center;justify-content:center;font:800 11px Manrope;background:${b.bg};color:${b.fg};border:1px solid ${b.bd}">${b.rank}</div>
-            <div style="font:600 13.5px/1.4 Manrope;color:var(--hxT1b);flex:1 1 0;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${b.n}</div>
-            <div style="font:500 11px/1 Manrope;color:var(--hxT3);flex:none">${b.b}d best</div>
-            <div style="font:800 14px/1 Manrope;color:${b.pc};flex:none;font-variant-numeric:tabular-nums">${b.all}%</div>
+          ${board.map((b, i) => `<div style="display:flex;align-items:center;gap:12px;min-height:50px;${i < board.length - 1 ? 'border-bottom:1px solid var(--line)' : ''}">
+            <div style="width:26px;height:26px;border-radius:999px;flex:none;display:flex;align-items:center;justify-content:center;box-sizing:border-box;font:800 11.5px Manrope;background:${b.bg};color:${b.fg};border:1px solid ${b.bd}">${b.rank}</div>
+            <div style="font:600 14px/1.4 Manrope;color:var(--text-primary);flex:1 1 0;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(b.n)}</div>
+            <div style="font:500 11.5px/1 Manrope;color:var(--text-muted);flex:none">${b.b}d best</div>
+            <div style="width:42px;text-align:right;font:800 14.5px/1 Manrope;color:${b.pc};flex:none;font-variant-numeric:tabular-nums">${b.all}%</div>
           </div>`).join('')}
         </div>
       </div>
 
-      <div style="margin-top:14px;background:rgba(151,196,89,0.06);border:1px solid rgba(151,196,89,0.25);border-radius:12px;padding:10px;text-align:center;font:600 11px Manrope;color:${GRN}">Full honest breakdown → 📈 Insights in your sheet</div>
-      <div style="text-align:center;font:500 10.5px/1.6 Manrope;color:var(--hxFoot);padding:18px 0 4px">${(S.daily || []).length} days tracked · updated today</div>
+      <div style="margin-top:14px;background:${al(P.acc, 0.08)};border:1px solid ${al(P.acc, 0.28)};border-radius:14px;padding:13px;text-align:center;font:600 12px Manrope;color:${P.accT}">Full honest breakdown → Insights in your sheet</div>
+      <div style="text-align:center;font:500 11px/1.6 Manrope;color:var(--text-muted);padding:14px 0 4px">${(S.daily || []).length} days tracked · updated today</div>
     </div>`;
 
     bindBack();
@@ -545,18 +603,7 @@
     panel.querySelectorAll('[data-day]').forEach(el => el.addEventListener('click', () => { if (el.dataset.day) { UI.day = el.dataset.day; render(); } }));
     panel.scrollTop = scrollY;
   }
-  function bindBack() {
-    const b = $('.hsx-back', panel); if (b) b.onclick = closePanel;
-    const t = $('#hsx-theme', panel);
-    if (t) t.onclick = () => {
-      if (typeof window.toggleTheme === 'function') { window.toggleTheme(); }
-      else {
-        const isLight = document.documentElement.classList.toggle('light');
-        try { localStorage.setItem('hbt-theme', isLight ? 'light' : 'dark'); } catch (e) {}
-      }
-      render();
-    };
-  }
+  function bindBack() {}
 
   // S is only ever set to a payload that has the shape render() needs.
   // Anything else (network error, {error} body, non-2xx, missing fields)
@@ -589,6 +636,20 @@
     })();
     return inflight;
   }
+
+  // Background refresh for the Insights screen. It never switches screens and
+  // never shows an error: if the fetch fails the data already on the page is
+  // kept exactly as it is. render() restores the panel's own scrollTop, so a
+  // refresh while the user is reading does not move them.
+  HT.refreshInsights = async function () {
+    if (!S) return false;            // nothing loaded yet; the first open fetches
+    const keep = S;
+    inflight = null;                 // force a fresh request, not the cached one
+    const fresh = await load();
+    if (!fresh) { S = keep; loadError = null; return false; }
+    if (isInsights()) render();      // in place; hidden screens update on open
+    return true;
+  };
 
 /* ---------- onboarding ---------- */
   const ob = document.createElement('div');
