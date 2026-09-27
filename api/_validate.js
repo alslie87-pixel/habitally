@@ -5,9 +5,10 @@
 // C..I, good in J..P). Everything outside that is Control Panel, headers or
 // formulas and must never be written by toggle-habit.
 //
-// Control Panel habit slots: E6:H20 (row 6 header, rows 7-20 slots).
-// E=Type, F=Habit name, G=Status, H=Note. Row position decides the column
-// in the month tabs, exactly like get-habits.
+// Control Panel habit slots: see _controlPanel.js. Row position decides the
+// type and the column in the month tabs, exactly like get-habits.
+
+const CP = require('./_controlPanel');
 
 const MONTHS = ["January","February","March","April","May","June",
                 "July","August","September","October","November","December"];
@@ -20,8 +21,6 @@ const COL_MAX = 16;  // P
 const TYPES = ['bad', 'good'];
 const NAME_MAX = 60;
 const NOTE_MAX = 500;
-
-const CP_HABITS_RANGE = "'⚙️ Control Panel'!E6:H20";
 
 // Accepts numbers and numeric strings; returns an integer or null.
 function toInt(v) {
@@ -54,18 +53,12 @@ function requirePost(req, res) {
 }
 
 // Active habit names by type, from the Control Panel. Position-based like
-// get-habits: bad habits live in slots 7-13, good in 14-20.
+// get-habits: bad habits live in rows 7-13, good in 14-20.
 async function readActiveHabits(sheets, spreadsheetId) {
-  const r = await sheets.spreadsheets.values.get({ spreadsheetId, range: CP_HABITS_RANGE });
-  const rows = (r.data.values || []).slice(1); // drop header row 6
+  const r = await sheets.spreadsheets.values.get({ spreadsheetId, range: CP.HABITS_RANGE });
   const out = { bad: [], good: [] };
-  rows.forEach((row, idx) => {
-    const type   = (row[0] || '').toString().trim().toLowerCase();
-    const name   = (row[1] || '').toString().trim();
-    const status = (row[2] || '').toString().trim().toLowerCase();
-    if (!name || status !== 'active') return;
-    if (type === 'bad'  && idx <= 6) out.bad.push(name);
-    if (type === 'good' && idx >= 7) out.good.push(name);
+  CP.readSlots(r.data.values).forEach(s => {
+    if (s.name && s.status === 'active') out[s.type].push(s.name);
   });
   return out;
 }

@@ -6,12 +6,16 @@
 // "Archive <year>", laid out as:
 //
 //   row 1   Date   | name of habit slot 1 | ... | name of slot 14   (Control Panel F7:F20)
-//   row 2   Type   | bad / good ...                                 (E7:E20)
+//   row 2   Type   | copy of Control Panel E7:E20 — not read, see below
 //   row 3   Status | active / conquered / ...                        (G7:G20)
 //   row 4+  date as text YYYY-MM-DD | TRUE/FALSE per slot, one row per calendar day of that year
 //
 // Slots 1-7 are the bad habits (month-tab columns C..I), 8-14 the good ones
-// (J..P), exactly like the Control Panel. The app only reads these tabs: it
+// (J..P), exactly like the Control Panel. The type comes from that position
+// alone, as everywhere else: column E is a label for people ("bad habit
+// calendar slot 1 --->"), so its copy in row 2 is ignored.
+//
+// The app only reads these tabs: it
 // works out each past year's trophies from the saved ticks with the same
 // rules _trophies.js uses for the running year, so a trophy never depends on
 // which side counted it.
@@ -61,13 +65,12 @@ async function readArchives(sheets, spreadsheetId) {
 function trophiesFromArchive(year, rows) {
   const out = { year, months: [], seasons: [], years: [] };
   if (!rows || rows.length < 4) return out;
-  const names = rows[0] || [], types = rows[1] || [], statuses = rows[2] || [];
+  const names = rows[0] || [], statuses = rows[2] || [];
   const slots = [];
-  for (let c = 1; c <= 14; c++) {
+  for (let c = 1; c <= 7; c++) {                 // slots 1-7: the bad habits
     const name = String(names[c] || '').trim();
-    const type = String(types[c] || '').trim().toLowerCase();
     const status = String(statuses[c] || '').trim().toLowerCase();
-    if (name && type === 'bad' && KEEPS_TROPHIES.indexOf(status) !== -1) slots.push({ c, name, counts: new Array(12).fill(0) });
+    if (name && KEEPS_TROPHIES.indexOf(status) !== -1) slots.push({ c, name, counts: new Array(12).fill(0) });
   }
   rows.slice(3).forEach(row => {
     const date = serialToDate(row && row[0]);
