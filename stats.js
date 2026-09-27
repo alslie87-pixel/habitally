@@ -109,6 +109,10 @@
   .obx-row{display:flex;align-items:center;gap:12px;height:52px;padding:0 14px;box-sizing:border-box;border-radius:14px;
     background:var(--bg-inner);border:1px solid var(--inner-border)}
   .obx-row:focus-within{border:1.5px solid var(--accent);box-shadow:0 0 0 4px var(--accent-tint-2)}
+  .obx-in{display:flex;align-items:center;gap:12px;flex:1 1 0;min-width:0;height:100%;cursor:text}
+  .obx-x{width:36px;height:36px;flex:none;margin-right:-8px;padding:0;border:none;border-radius:10px;background:transparent;
+    color:var(--text-muted);cursor:pointer;display:flex;align-items:center;justify-content:center}
+  .obx-x:hover{color:var(--bad-color);background:var(--bad-bg)}
   .obx-num{width:28px;height:28px;flex:none;border-radius:8px;color:#FFFFFF;font:800 12px Manrope;display:flex;align-items:center;justify-content:center}
   .obx-row input{flex:1 1 0;min-width:0;background:transparent;border:none;outline:none;color:var(--text-primary);font:600 15px Manrope}
   .obx-row input::placeholder{color:var(--text-muted);font-weight:500}
@@ -136,7 +140,7 @@
   .obx-btn{width:100%;height:56px;border:none;border-radius:18px;cursor:pointer;font:800 16px Manrope;color:#FFFFFF;
     background:var(--cta-bg);box-shadow:var(--cta-shadow);display:flex;align-items:center;justify-content:center;gap:8px}
   .obx-btn:disabled{opacity:.5;cursor:default}
-  .obx-btn:focus-visible,.obx-add:focus-visible,.obx-pick:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .obx-btn:focus-visible,.obx-add:focus-visible,.obx-pick:focus-visible,.obx-x:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
   .obx-foot{text-align:center;font:500 12px Manrope;color:var(--text-muted)}`;
   const st = document.createElement('style');
   st.textContent = css;
@@ -715,15 +719,27 @@
   // delegated events — survive re-renders, immune to blur/re-render races on mobile
   ob.addEventListener('input', e => {
     const inp = e.target.closest('input[data-t]');
-    if (inp) { obHabits[inp.dataset.t][+inp.dataset.i] = inp.value; if (obError) { obError = ''; paintFoot(); } }
+    if (inp) { obHabits[inp.dataset.t][+inp.dataset.i].name = inp.value; if (obError) { obError = ''; paintFoot(); } }
   });
   ob.addEventListener('click', e => {
     const add = e.target.closest('[data-add]');
     if (add) {
-      obHabits[add.dataset.add].push('');
+      obHabits[add.dataset.add].push({ orig: '', name: '' });
       obRender();
       const inputs = ob.querySelectorAll('input[data-t="' + add.dataset.add + '"]');
       if (inputs.length) inputs[inputs.length - 1].focus();
+      return;
+    }
+    const rm = e.target.closest('[data-rm]');
+    if (rm) {
+      const t = rm.dataset.rm;
+      const [h] = obHabits[t].splice(+rm.dataset.i, 1);
+      if (h && h.orig) obRemoved[t].push(h.orig);
+      obError = '';
+      obRender();
+      // a button, not an input, so no keyboard pops up on a phone
+      const next = ob.querySelector('[data-add="' + t + '"]');
+      if (next) next.focus({ preventScroll: true });
       return;
     }
     const fg = e.target.closest('[data-fg]');
@@ -733,8 +749,9 @@
   });
   obFoot.addEventListener('click', e => { if (e.target.closest('#obx-next')) obNext(); });
   let step = 0;
+  // one row per habit: orig = its name in the sheet ('' for a new one)
   let obHabits = { bad: [], good: [] };
-  let obOrig = { bad: [], good: [] };
+  let obRemoved = { bad: [], good: [] };   // sheet names taken out with ×
   let focus = { good: null, bad: null };
   let obError = '';
 
@@ -748,6 +765,7 @@
   const OB_PLUS = obIcon('<path d="M12 5v14M5 12h14"/>');
   const OB_UP = obIcon('<path d="M12 19V5"/><path d="M6 11l6-6 6 6"/>');
   const OB_DOWN = obIcon('<path d="M12 5v14"/><path d="M6 13l6 6 6-6"/>');
+  const OB_X = obIcon('<path d="M7 7l10 10M17 7L7 17"/>');
   const OB_DOT = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 12.5l4 4L18 8"/></svg>';
   const obTile = t => {
     const a = [99, 102, 241], b = [236, 72, 153];
@@ -762,10 +780,15 @@
     }).join('') + '</div>';
   }
 
+  // the names that are filled in, in row order
+  const obNames = type => obHabits[type].map(h => h.name.trim()).filter(Boolean);
+
   function obRows(type) {
     const list = obHabits[type];
-    const rows = list.map((h, i) => `<label class="obx-row"><span class="obx-num" style="background:${obTile(Math.min(i, 6) / 6)}">${i + 1}</span>` +
-      `<input data-t="${type}" data-i="${i}" value="${esc(h)}" placeholder="Enter habit here" maxlength="30" aria-label="${type === 'bad' ? 'Bad' : 'Good'} habit ${i + 1}"></label>`).join('');
+    const label = (type === 'bad' ? 'Bad' : 'Good') + ' habit ';
+    const rows = list.map((h, i) => `<div class="obx-row"><label class="obx-in"><span class="obx-num" style="background:${obTile(Math.min(i, 6) / 6)}">${i + 1}</span>` +
+      `<input data-t="${type}" data-i="${i}" value="${esc(h.name)}" placeholder="Enter habit here" maxlength="30" aria-label="${label}${i + 1}"></label>` +
+      `<button type="button" class="obx-x" data-rm="${type}" data-i="${i}" aria-label="Remove ${esc(h.name.trim() || label + (i + 1))}">${OB_X}</button></div>`).join('');
     const add = list.length < OB_MAX
       ? `<button type="button" class="obx-add" data-add="${type}">${OB_PLUS}Add ${type} habit</button>`
       : `<div class="obx-add full">All 7 places are in use</div>`;
@@ -775,7 +798,7 @@
   function obPicks(type) {
     const cur = type === 'good' ? focus.good : focus.bad;
     const attr = type === 'good' ? 'data-fg' : 'data-fb';
-    return obHabits[type].filter(Boolean).map(h => {
+    return obNames(type).map(h => {
       const sel = cur === h;
       return `<button type="button" class="obx-pick${sel ? ' sel' : ''}${type === 'bad' ? ' bad' : ''}" ${attr}="${esc(h)}" aria-pressed="${sel}">` +
         `<span class="dot">${sel ? OB_DOT : ''}</span>${esc(h)}</button>`;
@@ -815,7 +838,7 @@
       <div class="obx-group">${kicker('Building', 'var(--good-color)')}${obPicks('good')}</div>
       <div class="obx-group">${kicker('Eliminating', 'var(--bad-color)')}${obPicks('bad')}</div>`;
     if (step === 3) {
-      const n = obHabits.bad.filter(Boolean).length + obHabits.good.filter(Boolean).length;
+      const n = obNames('bad').length + obNames('good').length;
       body = `
       <div style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:12px;padding-top:40px">${OB_TICK}
         <div style="height:8px"></div><div class="obx-h" style="font-size:30px">You’re ready.</div>
@@ -830,52 +853,73 @@
 
   async function obNext() {
     if (step === 1) {
-      obHabits.bad = obHabits.bad.map(s => (s || '').trim());
-      obHabits.good = obHabits.good.map(s => (s || '').trim());
-      const nBad = obHabits.bad.filter(Boolean).length;
-      const nGood = obHabits.good.filter(Boolean).length;
-      if (nBad < 3 || nGood < 3) {
+      if (obNames('bad').length < 3 || obNames('good').length < 3) {
         obError = 'You need at least 3 good and 3 bad habits.';
         paintFoot(); return;
       }
       obError = '';
-      if (!obHabits.good.filter(Boolean).includes(focus.good)) focus.good = obHabits.good.filter(Boolean)[0];
-      if (!obHabits.bad.filter(Boolean).includes(focus.bad)) focus.bad = obHabits.bad.filter(Boolean)[0];
+      if (!obNames('good').includes(focus.good)) focus.good = obNames('good')[0];
+      if (!obNames('bad').includes(focus.bad)) focus.bad = obNames('bad')[0];
     }
     if (step === 3) { await obFinish(); return; }
     step++; obRender();
     ob.scrollTop = 0;
   }
 
+  // POST that throws unless the endpoint answers { success: true }
+  async function obPost(path, body) {
+    const r = await fetch(apiUrl(API + path), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body || {})
+    });
+    let data = null;
+    try { data = await r.json(); } catch (e) { /* no JSON body */ }
+    if (!r.ok || !data || !data.success) throw new Error((data && data.error) || 'HTTP ' + r.status);
+    return data;
+  }
+
+  // Writes one type's changes. Renames go first; then a removed habit and a
+  // new one are paired into a rename, so the new habit takes over the removed
+  // one's slot (in place, while the sheet is in onboarding) and the count
+  // never dips under 3 or climbs over 7 on the way. Whatever is left over is
+  // added or removed. Each step updates the local state as it lands, so a
+  // retry after a failure sends only what is still missing.
+  async function obSaveType(type) {
+    const list = obHabits[type];
+    list.forEach(h => { h.name = h.name.trim(); });
+    for (let i = list.length - 1; i >= 0; i--) {          // a cleared row is a removal
+      if (!list[i].name) { const [h] = list.splice(i, 1); if (h.orig) obRemoved[type].push(h.orig); }
+    }
+    const gone = obRemoved[type];
+    const config = body => obPost('/update-config', Object.assign({ type }, body));
+
+    for (const h of list) {
+      if (h.orig && h.name !== h.orig) { await config({ action: 'replace', name: h.orig, newName: h.name }); h.orig = h.name; }
+    }
+    for (const h of list) {
+      if (h.orig) continue;
+      const pair = gone.length > 0;
+      await config(pair ? { action: 'replace', name: gone[0], newName: h.name } : { action: 'add', newName: h.name });
+      if (pair) gone.shift();
+      h.orig = h.name;
+    }
+    while (gone.length) { await config({ action: 'remove', name: gone[0] }); gone.shift(); }
+  }
+
   async function obFinish() {
     const btn = $('#obx-next', obFoot);
     btn.disabled = true; btn.textContent = 'Setting up…';
     try {
-      // sync habit list: rename / add / remove via existing endpoint
-      for (const type of ['bad', 'good']) {
-        const n = Math.max(obHabits[type].length, obOrig[type].length);
-        for (let i = 0; i < n; i++) {
-          const oldName = (obOrig[type][i] || '').trim();
-          const newName = (obHabits[type][i] || '').trim();
-          const call = body => fetch(apiUrl(API + '/update-config'), {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body)
-          });
-          if (oldName && newName && oldName !== newName) {
-            await call({ action: 'replace', type, name: oldName, newName });
-          } else if (!oldName && newName) {
-            await call({ action: 'add', type, newName });
-          } else if (oldName && !newName) {
-            await call({ action: 'remove', type, name: oldName });
-          }
-        }
-      }
-      await fetch(apiUrl(API + '/update-focus'), { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'good', habitName: focus.good }) });
-      await fetch(apiUrl(API + '/update-focus'), { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'bad', habitName: focus.bad }) });
-      await fetch(apiUrl(API + '/set-onboarded'), { method: 'POST' });
-    } catch (e) { console.error('onboarding write failed', e); }
+      for (const type of ['bad', 'good']) await obSaveType(type);
+      await obPost('/update-focus', { type: 'good', habitName: focus.good });
+      await obPost('/update-focus', { type: 'bad', habitName: focus.bad });
+      await obPost('/set-onboarded');   // only once everything above is saved
+    } catch (e) {
+      console.error('onboarding write failed', e);
+      obError = 'Couldn’t save your setup (' + e.message + '). Please try again.';
+      paintFoot();
+      return;
+    }
     ob.classList.remove('show');
     location.reload();
   }
@@ -884,9 +928,10 @@
   document.addEventListener('DOMContentLoaded', async () => {
     const s = await load();
     if (s && s.needsOnboarding) {
-      obHabits.bad  = s.habits.filter(h => h.type === 'bad').map(h => h.name);
-      obHabits.good = s.habits.filter(h => h.type === 'good').map(h => h.name);
-      obOrig.bad = obHabits.bad.slice(); obOrig.good = obHabits.good.slice();
+      for (const type of ['bad', 'good']) {
+        obHabits[type] = s.habits.filter(h => h.type === type).map(h => ({ orig: h.name, name: h.name }));
+        obRemoved[type] = [];
+      }
       step = 0; obRender(); ob.classList.add('show');
     }
   });

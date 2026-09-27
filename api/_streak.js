@@ -18,9 +18,10 @@
 // the January tab carries the last few days of December and the streak keeps
 // that much of its tail.
 
+const CP = require('./_controlPanel');
+
 const WEEK_START_ROWS = [1, 10, 19, 28, 37]; // 0-based array rows (sheet rows 2, 11, 20, 29, 38)
 const DATE_COL = 1;                          // column B
-const GOOD_FIRST_COL = 9;                    // column J
 const THRESHOLD = 0.66;
 const FOCUS_WINDOW_DAYS = 30;                // the "X / 30" counter on the focus cards
 
@@ -43,20 +44,13 @@ function serialToDate(v) {
 
 function isChecked(v) { return v === true || v === 'TRUE'; }
 
-// Control Panel E6:H20 (header + 14 slots) -> active good habits with the
-// month-tab column each one occupies. Position-based, like get-habits:
-// slots 7-13 are bad habits, slots 14-20 are good ones.
+// Control Panel habit slots (values of CP.HABITS_RANGE) -> active good habits
+// with the month-tab column each one occupies. Position-based, like
+// get-habits: rows 7-13 are bad habits, rows 14-20 are good ones.
 function activeGoodHabits(configRows) {
-  const out = [];
-  (configRows || []).slice(1).forEach((row, idx) => {
-    if (idx < 7) return;
-    const type   = (row[0] || '').toString().trim().toLowerCase();
-    const name   = (row[1] || '').toString().trim();
-    const status = (row[2] || '').toString().trim().toLowerCase();
-    if (type !== 'good' || !name || status !== 'active') return;
-    out.push({ name, colIndex: GOOD_FIRST_COL + (idx - 7) });
-  });
-  return out;
+  return CP.readSlots(configRows)
+    .filter(s => s.type === 'good' && s.name && s.status === 'active')
+    .map(s => ({ name: s.name, colIndex: s.colIndex }));
 }
 
 // monthData: rows of the current month tab (unformatted values, 0-based).

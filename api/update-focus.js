@@ -1,10 +1,11 @@
 const { google } = require('googleapis');
 const { resolveSheetId } = require('./_user');
 const V = require('./_validate');
+const CP = require('./_controlPanel');
 
-// v28 sheet: Focus habits live in Control Panel C20 (good/Building)
-// and C21 (bad/Eliminating). habitName must be an active habit of that
-// type in the Control Panel; anything else is rejected.
+// Focus habits live in Control Panel C19 (good/Building) and C20
+// (bad/Eliminating). habitName must be an active habit of that type in the
+// Control Panel; anything else is rejected.
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -31,12 +32,9 @@ module.exports = async (req, res) => {
       return res.status(400).json({ success: false, error: 'Unknown habit' });
     }
 
-    const cell = type === 'good'
-      ? "'⚙️ Control Panel'!C20"
-      : "'⚙️ Control Panel'!C21";
     await sheets.spreadsheets.values.update({
       spreadsheetId: sheetId,
-      range: cell,
+      range: CP.FOCUS_CELL[type],
       valueInputOption: 'RAW',
       requestBody: { values: [[habitName]] }
     });

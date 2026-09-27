@@ -4,6 +4,7 @@ const { todayFrom, isoLocal } = require('./_date');
 const { sheetYearFromGrids, yearState, outOfYearPayload } = require('./_year');
 const { computeTrophies } = require('./_trophies');
 const { pastTrophies, MON } = require('./_archive');
+const CP = require('./_controlPanel');
 
 
 // v28 stats endpoint — one batchGet, everything the stats page needs.
@@ -11,7 +12,7 @@ const { pastTrophies, MON } = require('./_archive');
 //   B=1 date · C..I=2..8 bad · J..P=9..15 good · Q=16 BH% · R=17 GH%
 //   W=22 weekday helper · X=23 numeric GH daily helper
 //   Row 46 (idx 45) = monthly counts per habit · M47=[46][12] · H47=[46][7]
-// Control Panel: E7:H20 habit slots · Z1 = hidden app-onboarded marker.
+// Control Panel: habit slots and the Z1 onboarded marker — see _controlPanel.js.
 
 const MONTHS = ["January","February","March","April","May","June",
                 "July","August","September","October","November","December"];
@@ -41,8 +42,8 @@ module.exports = async (req, res) => {
     if (!sheetId) return res.status(404).json({ error: 'unknown user' });
 
     const ranges = MONTHS.map(m => `'${m}'!A1:X47`);
-    ranges.push("'⚙️ Control Panel'!E7:H20");
-    ranges.push("'⚙️ Control Panel'!Z1");
+    ranges.push(CP.HABITS_RANGE);
+    ranges.push(CP.ONBOARDED_CELL);
 
     const batch = await sheets.spreadsheets.values.batchGet({
       spreadsheetId: sheetId,
@@ -63,15 +64,8 @@ module.exports = async (req, res) => {
     if (year.outOfYear) return res.status(200).json(outOfYearPayload(year));
 
     // ── habits (position-based, like get-habits) ─────────────
-    const habits = [];
-    cpRows.forEach((row, idx) => {
-      const type = (row[0] || '').toString().trim().toLowerCase();
-      const name = (row[1] || '').toString().trim();
-      const status = (row[2] || '').toString().trim().toLowerCase();
-      if (!type || !name || status === 'empty') return;
-      const colIndex = idx <= 6 ? 2 + idx : 9 + (idx - 7);
-      habits.push({ name, type, status, colIndex });
-    });
+    const habits = CP.readSlots(cpRows).filter(CP.isHabit)
+      .map(s => ({ name: s.name, type: s.type, status: s.status, colIndex: s.colIndex }));
     const active = habits.filter(h => h.status === 'active');
 
     // ── helpers over one month grid ──────────────────────────
@@ -218,11 +212,14 @@ module.exports = async (req, res) => {
     const conqueredCount = habits.filter(h => h.status === 'conquered').length;
 
     // ── onboarding state ─────────────────────────────────────
-    const names = active.map(h => h.name).sort();
-    const isDefault = names.length === 6 &&
-      DEFAULT_HABITS.slice().sort().every((n, i) => n === names[i]);
-    const onboarded = String(markerCell).trim() === 'app-onboarded';
-    const needsOnboarding = !onboarded && isDefault && checksYTD === 0;
+    // Exactly the six defaults (upper/lower case ignored), Z1 not marked and
+    // not a single checkmark. The last two are the same rule update-config
+    // uses to rename in place during onboarding.
+    const lower = list => list.map(n => n.toLowerCase()).sort();
+    const names = lower(active.map(h => h.name));
+    const defaults = lower(DEFAULT_HABITS);
+    const isDefault = names.length === defaults.length && defaults.every((n, i) => n === names[i]);
+    const needsOnboarding = isDefault && CP.inOnboarding(markerCell, monthGrids);
 
     // ── trophy case ───────────────────────────────────────────
     // This year's month trophies come from the ticks, like everywhere else;

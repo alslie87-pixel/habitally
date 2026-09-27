@@ -5,22 +5,17 @@ const { serialToDate, isChecked, computeStreakAcrossYear, countFocusTicks,
         FOCUS_WINDOW_DAYS } = require('./_streak');
 const { sheetYearFromGrids, yearState, outOfYearPayload } = require('./_year');
 const { computeTrophies, monthTicks, elapsedThisMonth } = require('./_trophies');
+const CP = require('./_controlPanel');
 
 
 // ── v28 SHEET STRUCTURE ──────────────────────────────────────
-// Control Panel: E=Type, F=Habit name, G=Status, H=Note (rows 7-20)
-//                Focus: C20 (Building/good), C21 (Eliminating/bad)
-//                Start Year: C23
+// Control Panel: slots, focus cells and marker — see _controlPanel.js
 // Month tabs:    bad habits C..I (0-based 2..8), good J..P (9..15)
 //                Q=BH% (16), R=GH% (17), S=Streak (18),
 //                T=Weakest (19), U=Signal (20)
 // Reads use UNFORMATTED_VALUE: dates arrive as serial numbers,
 // checkboxes as booleans, percents as 0..1 numbers.
 
-const CP_HABITS_RANGE = "'⚙️ Control Panel'!E6:H20"; // header + 14 slots
-const CP_FOCUS_RANGE  = "'⚙️ Control Panel'!C20:C21";
-const BAD_FIRST_COL   = 2;  // C
-const GOOD_FIRST_COL  = 9;  // J
 const COL_GH_WEEKLY   = 17; // R
 const COL_WEAKEST     = 19; // T
 const COL_SIGNAL      = 20; // U
@@ -71,7 +66,7 @@ module.exports = async (req, res) => {
     const lastColLetter = colIndexToLetter(COL_SIGNAL); // U
 
     const ranges = monthNames.map(m => `'${m}'!A1:${lastColLetter}46`);
-    ranges.push(CP_HABITS_RANGE, CP_FOCUS_RANGE);
+    ranges.push(CP.HABITS_RANGE, CP.FOCUS_RANGE);
 
     const batch = await sheets.spreadsheets.values.batchGet({
       spreadsheetId: sheetId,
@@ -87,28 +82,21 @@ module.exports = async (req, res) => {
     const badHabits = [];
     const goodHabits = [];
 
-    // rows[1] = CP row 7. Column index follows the ROW POSITION,
-    // so empty slots in the middle no longer shift later habits.
-    configRows.slice(1).forEach((row, idx) => {
-      const type   = (row[0] || '').toString().trim().toLowerCase();
-      const name   = (row[1] || '').toString().trim();
-      const status = (row[2] || '').toString().trim().toLowerCase();
-      const note   = (row[3] || '').toString().trim();
-      if (!type || !name || status === 'empty') return;
-
-      if (type === 'bad' && idx <= 6) {
-        badHabits.push({ name, status, note, colIndex: BAD_FIRST_COL + idx });
-      } else if (type === 'good' && idx >= 7) {
-        goodHabits.push({ name, status, note, colIndex: GOOD_FIRST_COL + (idx - 7) });
-      }
+    // Type and column index follow the ROW POSITION, so empty slots in the
+    // middle do not shift later habits.
+    CP.readSlots(configRows).forEach(s => {
+      if (!CP.isHabit(s)) return;
+      const h = { name: s.name, status: s.status, note: s.note, colIndex: s.colIndex };
+      (s.type === 'bad' ? badHabits : goodHabits).push(h);
     });
 
     const activeBad    = badHabits.filter(h => h.status === 'active');
     const activeGood   = goodHabits.filter(h => h.status === 'active');
 
     // ── 2. FOCUS HABITS ──────────────────────────────────────
-    // C20/C21 hold a habit NAME as free text. update-focus only validates it
-    // when the app writes it, so a hand-edit or a rename in the sheet can
+    // C19 (Building) / C20 (Eliminating) hold a habit NAME as free text.
+    // update-focus only validates it when the app writes it, so a hand-edit
+    // or a rename in the sheet can
     // leave a name that matches nothing. That is reported as its own state
     // rather than counted as zero days.
     const goodFocus = focusData[0] && focusData[0][0] ? String(focusData[0][0]).trim() : '';

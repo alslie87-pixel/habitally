@@ -1,6 +1,7 @@
 const { google } = require('googleapis');
 const { resolveSheetId } = require('./_user');
 const { requirePost } = require('./_validate');
+const CP = require('./_controlPanel');
 
 
 // Writes the hidden onboarding marker to Control Panel Z1.
@@ -20,9 +21,9 @@ module.exports = async (req, res) => {
     const sheets = google.sheets({ version: 'v4', auth });
     await sheets.spreadsheets.values.update({
       spreadsheetId: sheetId,
-      range: "'⚙️ Control Panel'!Z1",
+      range: CP.ONBOARDED_CELL,
       valueInputOption: 'RAW',
-      requestBody: { values: [['app-onboarded']] }
+      requestBody: { values: [[CP.ONBOARDED_MARK]] }
     });
     res.status(200).json({ success: true });
   } catch (err) {
