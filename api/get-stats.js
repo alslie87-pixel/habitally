@@ -2,6 +2,8 @@ const { google } = require('googleapis');
 const { resolveSheetId } = require('./_user');
 const { todayFrom, isoLocal } = require('./_date');
 const { sheetYearFromGrids, yearState, outOfYearPayload } = require('./_year');
+const { computeTrophies } = require('./_trophies');
+const { pastTrophies, MON } = require('./_archive');
 
 
 // v28 stats endpoint — one batchGet, everything the stats page needs.
@@ -222,7 +224,25 @@ module.exports = async (req, res) => {
     const onboarded = String(markerCell).trim() === 'app-onboarded';
     const needsOnboarding = !onboarded && isDefault && checksYTD === 0;
 
+    // ── trophy case ───────────────────────────────────────────
+    // This year's month trophies come from the ticks, like everywhere else;
+    // earlier years are counted from the hidden "Archive <year>" tabs that the
+    // sheet's Start new year menu writes before it clears the grid. Shown on
+    // the Insights screen.
+    const tcBad = habits.filter(h => h.type === 'bad');
+    const tcNow = computeTrophies(monthGrids, tcBad, today).trophies;
+    const tcMonths = [];
+    tcNow.habits.forEach(h => h.months.forEach(m => {
+      if (m.won) tcMonths.push({ name: h.name, m: m.m, when: MON[m.m] });
+    }));
+    tcMonths.sort((a, b) => a.m - b.m || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+    const trophyCase = {
+      current: { year: today.getFullYear(), months: tcMonths },
+      past: await pastTrophies(sheets, sheetId, today.getFullYear())
+    };
+
     res.status(200).json({
+      trophyCase,
       needsOnboarding,
       habits: active.map(h => ({ name: h.name, type: h.type })),
       months, daily, weekday, matrix, momentum, leaderboard,
