@@ -492,6 +492,22 @@
         bd: badge[i] ? badge[i].bd : 'var(--line)',
         pc: i === 0 ? P.gold : 'var(--text-primary)' }));
 
+    /* trophy case: this year's month trophies, then every year saved by Start <year> */
+    const tc = S.trophyCase || { current: { months: [] }, past: [] };
+    const tcTiles = list => '<div class="tc-wall">' + list.map(t => '<div class="tc-tile">' +
+      '<svg class="tc-cup" aria-hidden="true"><use href="#trophyGold"/></svg>' +
+      '<div class="tc-name">' + esc(t.name) + '</div><div class="tc-when">' + esc(t.when) + '</div></div>').join('') + '</div>';
+    const tcGroups = [];
+    if (tc.current && tc.current.months && tc.current.months.length) tcGroups.push({ year: tc.current.year, months: tc.current.months });
+    (tc.past || []).forEach(g => { if (g.months && g.months.length) tcGroups.push(g); });
+    const trophyCase = !tcGroups.length ? '' : `
+      <section class="trophycase" style="margin-top:12px">
+        <div class="tc-title">Trophy Case</div>
+        <div class="tc-sub">Your collection so far</div>
+        ${tcGroups.map((g, i) => (tcGroups.length > 1 || (tc.past || []).length
+          ? `<div class="ink-k" style="margin:${i ? '18px' : '0'} 0 10px">${g.year}</div>` : '') + tcTiles(g.months)).join('')}
+      </section>`;
+
     const monthsIn = curM + 1;
     const scrollY = panel.scrollTop;
     const avgX = tX + tW * score / 100;
@@ -509,6 +525,8 @@
           <div style="font:700 10px/1.3 Manrope;letter-spacing:0.14em;text-transform:uppercase;color:var(--text-muted)">${t.l}</div>
         </div>`).join('')}
       </div>
+
+      ${trophyCase}
 
       <div class="hsx-card" style="padding:18px 18px 16px">
         <div class="hsx-row"><div class="ink-k">Momentum</div><div class="hsx-k2">Monthly completion</div></div>

@@ -26,6 +26,7 @@ Guidance for Claude (and humans) working in this repo.
 | `set-onboarded.js` | **write** | Writes the hidden onboarding marker (Control Panel Z1). |
 | `update-focus.js` | **write** | Updates the current focus. |
 | `update-config.js` | **write** | Updates Control Panel configuration. |
+| `_archive.js` | **read** | Reads the hidden "Archive <year>" tabs that the sheet's own Start new year menu (rolloverYear) writes, and counts past years' trophies for the Insights trophy case. The app never starts a new year itself. |
 
 ### Environment variables (set in Vercel — do not hardcode)
 

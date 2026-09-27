@@ -83,8 +83,8 @@ function yearState(sheetYear, today) {
 // Shown to the customer by index.html, stats.js and toggle-habit, so the
 // wording lives in one place.
 function outOfYearMessage(currentYear) {
-  return 'A new year has begun. Your sheet is being prepared for ' + currentYear +
-         ' — get in touch if it doesn\u2019t update automatically.';
+  return 'A new year has begun. To start ' + currentYear + ', open your HabiTally sheet and choose ' +
+         'HabiTally \u2192 Start new year in the menu at the top. Your trophies are kept.';
 }
 
 // The payload the read endpoints return instead of their aggregates.

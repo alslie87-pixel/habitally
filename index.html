@@ -501,13 +501,6 @@
         </div>
       </div>
 
-      <!-- CONQUERED -->
-      <section id="trophy-case" class="trophycase is-empty">
-        <div class="tc-title">Trophy Case</div>
-        <div class="tc-sub">Your collection so far</div>
-        <div id="tc-wall" class="tc-wall"></div>
-      </section>
-
       <!-- AI COACHING -->
       <div class="mt-2.5">
         <button id="coaching-btn" onclick="requestCoaching()" class="ink-cta">Get AI Coaching</button>
@@ -960,35 +953,7 @@
         // background refresh never flips the list under its title
         renderOverviewList(overviewMode === 'bad' ? (data.badHabitStats || []) : (data.goodHabitStats || []), overviewMode);
 
-        // Trophy case: one gold tile per month trophy actually won. Nothing
-        // unwon is ever drawn, and the whole section stays out of the page
-        // until the first trophy lands. Season and year trophies are not
-        // shown here — this card is the monthly collection.
-        const tcSection = document.getElementById('trophy-case');
-        const tcMonths = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-        const tcWon = [];
-        ((data.trophies && data.trophies.habits) || []).forEach(function (h) {
-          (h.months || []).forEach(function (m) {
-            if (m.won) tcWon.push({ name: h.name, m: m.m, when: tcMonths[m.m] });
-          });
-        });
-        tcWon.sort(function (a, b) {
-          return a.m - b.m || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
-        });
-
-        if (tcWon.length === 0) {
-          tcSection.classList.add('is-empty');
-          document.getElementById('tc-wall').innerHTML = '';
-        } else {
-          tcSection.classList.remove('is-empty');
-          setHTML(document.getElementById('tc-wall'), tcWon.map(function (t) {
-            return '<div class="tc-tile">' +
-              '<svg class="tc-cup" aria-hidden="true"><use href="#trophyGold"/></svg>' +
-              '<div class="tc-name">' + escapeHtml(t.name) + '</div>' +
-              '<div class="tc-when">' + t.when + '</div>' +
-              '</div>';
-          }).join(''));
-        }
+        // The trophy case lives on the Insights screen (stats.js).
 
         // Calendar
         renderCalendar(data);
