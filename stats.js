@@ -80,29 +80,64 @@
   @media(min-width:640px){.hsx-tiles{grid-template-columns:repeat(4,minmax(0,1fr))}}
   .hsx-tile{background:var(--bg-card);border:1px solid var(--card-border);border-radius:20px;padding:16px;display:flex;flex-direction:column;gap:8px;box-shadow:var(--card-shadow)}
   @keyframes haloPulse{0%,100%{opacity:.5}50%{opacity:1}}
-  #obx{position:fixed;inset:0;background:var(--bg-page);z-index:200;overflow-y:auto;
-    padding:24px 18px;display:none}
+  /* onboarding: Ink "steps" layout. Named steps on top, numbered habit rows
+     like the Habits screen, and the main button pinned to the bottom. */
+  #obx{position:fixed;inset:0;z-index:200;overflow-y:auto;overscroll-behavior:contain;display:none;
+    background-color:var(--bg-page);background-image:var(--page-glow);background-repeat:no-repeat;
+    padding:0 20px calc(150px + env(safe-area-inset-bottom, 0px));box-sizing:border-box;
+    font-family:Manrope,system-ui,-apple-system,sans-serif;color:var(--text-primary)}
   #obx.show{display:block}
-  .obx-wrap{max-width:420px;margin:0 auto}
-  .obx-dots{text-align:center;color:var(--text-secondary);font-size:10px;margin-bottom:18px}
-  .obx-big{text-align:center;font-size:34px;margin-bottom:10px}
-  .obx-t{text-align:center;font-weight:700;font-size:17px;margin-bottom:6px}
-  .obx-s{text-align:center;color:var(--text-secondary);font-size:12px;line-height:1.6;margin-bottom:16px}
-  .obx-info{border-radius:12px;padding:12px;margin-bottom:10px;background:var(--bg-card)}
-  .obx-info b{font-size:12px}
-  .obx-info div{font-size:10px;color:var(--text-secondary);margin-top:3px}
-  .obx-lbl{font-size:10px;font-weight:600;margin:10px 0 5px 0}
-  .obx-item{background:var(--bg-card);border:1px solid var(--border-default);border-radius:10px;
-    padding:9px 12px;margin-bottom:5px;display:flex;justify-content:space-between;align-items:center;cursor:pointer}
-  .obx-item input{background:transparent;border:none;color:var(--text-primary);font-size:13px;
-    width:100%;outline:none}
-  .obx-item.sel{border-color:#639922;background:var(--bg-card-inner)}
-  .obx-item.selbad{border-color:#A32D2D;background:var(--bg-card-inner)}
-  .obx-btn{display:block;width:100%;background:#7F77DD;border:none;border-radius:12px;
-    padding:13px;color:#fff;font-weight:600;font-size:14px;cursor:pointer;margin-top:16px}
-  .obx-btn:disabled{opacity:.4}
-  .obx-add{border:1px dashed var(--border-default);border-radius:10px;padding:8px;text-align:center;color:var(--text-secondary);font-size:11px;cursor:pointer;margin-bottom:5px}
-  .obx-foot{text-align:center;color:var(--text-secondary);font-size:9px;margin-top:10px}`;
+  .obx-wrap{max-width:440px;margin:0 auto;display:flex;flex-direction:column;gap:16px;padding-top:env(safe-area-inset-top, 0px)}
+  .obx-steps{display:flex;padding:22px 0 8px}
+  .obx-step{flex:1 1 0;display:flex;flex-direction:column;align-items:center;gap:6px}
+  .obx-step i{width:24px;height:24px;border-radius:8px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;
+    font:800 11.5px Manrope;font-style:normal;border:1.5px solid var(--inner-border);color:var(--text-muted)}
+  .obx-step.on i{border:none;color:#FFFFFF}
+  .obx-step span{font:600 11px Manrope;color:var(--text-muted)}
+  .obx-step.cur span{font-weight:800;color:var(--text-primary)}
+  .obx-h{font:800 26px/1.1 Manrope;letter-spacing:-0.035em;color:var(--text-primary);text-wrap:balance}
+  .obx-s{font:400 14px/1.55 Manrope;color:var(--text-secondary);text-wrap:pretty}
+  .obx-hero{background:var(--hero-bg);border:1px solid var(--hero-border);border-radius:22px;box-shadow:var(--hero-shadow);
+    padding:26px 22px;display:flex;flex-direction:column;gap:12px;margin-top:10px}
+  .obx-hero img{width:48px;height:48px;border-radius:11px;display:block}
+  .obx-kind{background:var(--bg-card);border:1px solid var(--card-border);border-radius:20px;box-shadow:var(--card-shadow);
+    padding:16px;display:flex;gap:14px;align-items:flex-start}
+  .obx-kind .ic{width:32px;height:32px;flex:none;border-radius:10px;display:flex;align-items:center;justify-content:center}
+  .obx-kind b{display:block;font:800 15px Manrope;margin-bottom:4px}
+  .obx-kind div div{font:400 13px/1.5 Manrope;color:var(--text-secondary)}
+  .obx-group{display:flex;flex-direction:column;gap:8px}
+  .obx-row{display:flex;align-items:center;gap:12px;height:52px;padding:0 14px;box-sizing:border-box;border-radius:14px;
+    background:var(--bg-inner);border:1px solid var(--inner-border)}
+  .obx-row:focus-within{border:1.5px solid var(--accent);box-shadow:0 0 0 4px var(--accent-tint-2)}
+  .obx-num{width:28px;height:28px;flex:none;border-radius:8px;color:#FFFFFF;font:800 12px Manrope;display:flex;align-items:center;justify-content:center}
+  .obx-row input{flex:1 1 0;min-width:0;background:transparent;border:none;outline:none;color:var(--text-primary);font:600 15px Manrope}
+  .obx-row input::placeholder{color:var(--text-muted);font-weight:500}
+  .obx-add{height:48px;border-radius:14px;border:1.5px dashed var(--accent-dash);background:transparent;cursor:pointer;
+    font:700 14px Manrope;color:var(--accent-text);display:flex;align-items:center;justify-content:center;gap:6px;width:100%}
+  .obx-add.full{cursor:default;color:var(--text-muted);border-color:var(--inner-border)}
+  .obx-pick{display:flex;align-items:center;gap:12px;width:100%;height:52px;padding:0 14px;box-sizing:border-box;border-radius:14px;cursor:pointer;
+    text-align:left;font:600 15px Manrope;color:var(--text-primary);background:var(--bg-inner);border:1px solid var(--inner-border)}
+  .obx-pick .dot{width:22px;height:22px;flex:none;box-sizing:border-box;border-radius:999px;border:2px solid var(--inner-border);
+    display:flex;align-items:center;justify-content:center;color:#FFFFFF}
+  .obx-pick.sel{font-weight:800;border:1.5px solid var(--accent-edge);background:var(--accent-tint)}
+  .obx-pick.sel .dot{border:none;background:var(--accent)}
+  .obx-pick.sel.bad{border-color:var(--bad-edge);background:var(--bad-bg)}
+  .obx-pick.sel.bad .dot{background:var(--bad-color)}
+  .obx-sum{background:var(--bg-card);border:1px solid var(--card-border);border-radius:20px;box-shadow:var(--card-shadow);padding:18px;
+    display:flex;flex-direction:column;gap:12px}
+  .obx-sum div{display:flex;justify-content:space-between;gap:12px;font:400 14px Manrope;color:var(--text-secondary)}
+  .obx-sum b{font-weight:800;color:var(--text-primary);text-align:right}
+  .obx-sum hr{border:none;height:1px;margin:0;background:var(--line)}
+  .obx-err{font:600 13px/1.4 Manrope;color:var(--bad-color);text-align:center}
+  .obx-foot-wrap{position:fixed;left:0;right:0;bottom:0;z-index:201;padding:18px 20px calc(28px + env(safe-area-inset-bottom, 0px));
+    background:linear-gradient(180deg, transparent 0%, var(--bg-page) 28%);display:none}
+  #obx.show + .obx-foot-wrap{display:block}
+  .obx-foot-in{max-width:440px;margin:0 auto;display:flex;flex-direction:column;gap:10px}
+  .obx-btn{width:100%;height:56px;border:none;border-radius:18px;cursor:pointer;font:800 16px Manrope;color:#FFFFFF;
+    background:var(--cta-bg);box-shadow:var(--cta-shadow);display:flex;align-items:center;justify-content:center;gap:8px}
+  .obx-btn:disabled{opacity:.5;cursor:default}
+  .obx-btn:focus-visible,.obx-add:focus-visible,.obx-pick:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .obx-foot{text-align:center;font:500 12px Manrope;color:var(--text-muted)}`;
   const st = document.createElement('style');
   st.textContent = css;
   document.head.appendChild(st);
@@ -655,10 +690,14 @@
   const ob = document.createElement('div');
   ob.id = 'obx';
   document.body.appendChild(ob);
+  // the button sits outside the scrolling screen so it stays pinned to the bottom
+  const obFoot = document.createElement('div');
+  obFoot.className = 'obx-foot-wrap';
+  document.body.appendChild(obFoot);
   // delegated events — survive re-renders, immune to blur/re-render races on mobile
   ob.addEventListener('input', e => {
     const inp = e.target.closest('input[data-t]');
-    if (inp) obHabits[inp.dataset.t][+inp.dataset.i] = inp.value;
+    if (inp) { obHabits[inp.dataset.t][+inp.dataset.i] = inp.value; if (obError) { obError = ''; paintFoot(); } }
   });
   ob.addEventListener('click', e => {
     const add = e.target.closest('[data-add]');
@@ -673,53 +712,102 @@
     if (fg) { focus.good = fg.dataset.fg; obRender(); return; }
     const fb = e.target.closest('[data-fb]');
     if (fb) { focus.bad = fb.dataset.fb; obRender(); return; }
-    if (e.target.closest('#obx-next')) obNext();
   });
+  obFoot.addEventListener('click', e => { if (e.target.closest('#obx-next')) obNext(); });
   let step = 0;
   let obHabits = { bad: [], good: [] };
   let obOrig = { bad: [], good: [] };
   let focus = { good: null, bad: null };
+  let obError = '';
+
+  const OB_STEPS = ['Welcome', 'Habits', 'Focus', 'Done'];
+  const OB_MAX = 7;
+  // the icon's tile check, without its dark square
+  const OB_TICK = `<svg width="120" height="105" viewBox="0 0 66.9 58.3" aria-hidden="true" style="display:block"><rect x='60.20' y='0.00' width='6.7' height='6.7' rx='1.6' fill='#ec4899'/><rect x='51.60' y='8.60' width='6.7' height='6.7' rx='1.6' fill='#da4ca5'/><rect x='60.20' y='8.60' width='6.7' height='6.7' rx='1.6' fill='#e24a9f'/><rect x='0.00' y='17.20' width='6.7' height='6.7' rx='1.6' fill='#6366f1'/><rect x='43.00' y='17.20' width='6.7' height='6.7' rx='1.6' fill='#c850b0'/><rect x='51.60' y='17.20' width='6.7' height='6.7' rx='1.6' fill='#d04eab'/><rect x='0.00' y='25.80' width='6.7' height='6.7' rx='1.6' fill='#6665ef'/><rect x='8.60' y='25.80' width='6.7' height='6.7' rx='1.6' fill='#6f63e9'/><rect x='34.40' y='25.80' width='6.7' height='6.7' rx='1.6' fill='#b654bc'/><rect x='43.00' y='25.80' width='6.7' height='6.7' rx='1.6' fill='#be52b6'/><rect x='8.60' y='34.40' width='6.7' height='6.7' rx='1.6' fill='#7861e4'/><rect x='17.20' y='34.40' width='6.7' height='6.7' rx='1.6' fill='#815fde'/><rect x='25.80' y='34.40' width='6.7' height='6.7' rx='1.6' fill='#a458c7'/><rect x='34.40' y='34.40' width='6.7' height='6.7' rx='1.6' fill='#ac56c2'/><rect x='17.20' y='43.00' width='6.7' height='6.7' rx='1.6' fill='#8a5dd8'/><rect x='25.80' y='43.00' width='6.7' height='6.7' rx='1.6' fill='#9a5ace'/><rect x='34.40' y='43.00' width='6.7' height='6.7' rx='1.6' fill='#a258c8'/><rect x='25.80' y='51.60' width='6.7' height='6.7' rx='1.6' fill='#945bd2'/></svg>`;
+  const obIcon = d => `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+  const OB_ARROW = obIcon('<path d="M5 12h14"/><path d="M13 6l6 6-6 6"/>');
+  const OB_CHECK = obIcon('<path d="M5 12.5l4.5 4.5L19 7.5"/>');
+  const OB_PLUS = obIcon('<path d="M12 5v14M5 12h14"/>');
+  const OB_UP = obIcon('<path d="M12 19V5"/><path d="M6 11l6-6 6 6"/>');
+  const OB_DOWN = obIcon('<path d="M12 5v14"/><path d="M6 13l6 6 6-6"/>');
+  const OB_DOT = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 12.5l4 4L18 8"/></svg>';
+  const obTile = t => {
+    const a = [99, 102, 241], b = [236, 72, 153];
+    return 'rgb(' + a.map((v, i) => Math.round(v + (b[i] - v) * t)).join(',') + ')';
+  };
+
+  function obSteps() {
+    return '<div class="obx-steps">' + OB_STEPS.map((n, i) => {
+      const on = i <= step;
+      return `<div class="obx-step${on ? ' on' : ''}${i === step ? ' cur' : ''}"${i === step ? ' aria-current="step"' : ''}>` +
+        `<i${on ? ` style="background:${obTile(i / 3)}"` : ''}>${i + 1}</i><span>${n}</span></div>`;
+    }).join('') + '</div>';
+  }
+
+  function obRows(type) {
+    const list = obHabits[type];
+    const rows = list.map((h, i) => `<label class="obx-row"><span class="obx-num" style="background:${obTile(Math.min(i, 6) / 6)}">${i + 1}</span>` +
+      `<input data-t="${type}" data-i="${i}" value="${esc(h)}" placeholder="Enter habit here" maxlength="30" aria-label="${type === 'bad' ? 'Bad' : 'Good'} habit ${i + 1}"></label>`).join('');
+    const add = list.length < OB_MAX
+      ? `<button type="button" class="obx-add" data-add="${type}">${OB_PLUS}Add ${type} habit</button>`
+      : `<div class="obx-add full">All 7 places are in use</div>`;
+    return rows + add;
+  }
+
+  function obPicks(type) {
+    const cur = type === 'good' ? focus.good : focus.bad;
+    const attr = type === 'good' ? 'data-fg' : 'data-fb';
+    return obHabits[type].filter(Boolean).map(h => {
+      const sel = cur === h;
+      return `<button type="button" class="obx-pick${sel ? ' sel' : ''}${type === 'bad' ? ' bad' : ''}" ${attr}="${esc(h)}" aria-pressed="${sel}">` +
+        `<span class="dot">${sel ? OB_DOT : ''}</span>${esc(h)}</button>`;
+    }).join('');
+  }
+
+  function paintFoot() {
+    const labels = [['Let’s set up', OB_ARROW], ['Keep these', OB_CHECK], ['Continue', OB_ARROW], ['Tick your first habit', OB_ARROW]];
+    const [label, icon] = labels[step];
+    const disabled = step === 2 && !(focus.good && focus.bad);
+    obFoot.innerHTML = '<div class="obx-foot-in">' +
+      (obError ? `<div class="obx-err" role="alert">${esc(obError)}</div>` : '') +
+      `<button type="button" class="obx-btn" id="obx-next"${disabled ? ' disabled' : ''}>${label}${icon}</button>` +
+      (step === 3 ? '<div class="obx-foot">Writes your habits to the sheet · shows only once</div>' : '') +
+      '</div>';
+  }
 
   function obRender() {
-    const dots = ['●○○○','○●○○','○○●○','○○○●'][step];
-    if (step === 0) ob.innerHTML = `<div class="obx-wrap">
-      <div class="obx-dots">${dots}</div>
-      <div class="obx-big">⚡</div>
-      <div class="obx-t">One habit at a time.</div>
-      <div class="obx-s">Three minutes from here to your first checkmark.</div>
-      <div class="obx-info" style="border:1px solid #27500A"><b style="color:#97C459">▲ Build — good habits</b>
-        <div>Tick when you did it. Exercise, read, sleep on time.</div></div>
-      <div class="obx-info" style="border:1px solid #501313"><b style="color:#F09595">▼ Avoid — bad habits</b>
-        <div>Tick when you resisted. A tick = a win, both ways.</div></div>
-      <button class="obx-btn" id="obx-next">Let's set up →</button></div>`;
-    if (step === 1) ob.innerHTML = `<div class="obx-wrap">
-      <div class="obx-dots">${dots}</div>
-      <div class="obx-t" style="text-align:left">Your habits</div>
-      <div class="obx-s" style="text-align:left">We filled in six classics — make them yours, or keep them.<br><span style="font-size:10px">min 3 + 3 · max 7 + 7 · tap a name to edit it</span></div>
-      <div class="obx-lbl" style="color:#F09595">▼ AVOID</div>
-      ${obHabits.bad.map((h, i) => `<div class="obx-item"><input data-t="bad" data-i="${i}" value="${h}" placeholder="Enter habit here"></div>`).join('')}
-      ${obHabits.bad.length < 7 ? '<div class="obx-add" data-add="bad">+ add habit</div>' : '<div class="obx-add" style="cursor:default;background:var(--bg-card-inner);border:1px solid var(--border-default);color:var(--text-secondary)">Maxed out!</div>'}
-      <div class="obx-lbl" style="color:#97C459">▲ BUILD</div>
-      ${obHabits.good.map((h, i) => `<div class="obx-item"><input data-t="good" data-i="${i}" value="${h}" placeholder="Enter habit here"></div>`).join('')}
-      ${obHabits.good.length < 7 ? '<div class="obx-add" data-add="good">+ add habit</div>' : '<div class="obx-add" style="cursor:default;background:var(--bg-card-inner);border:1px solid var(--border-default);color:var(--text-secondary)">Maxed out!</div>'}
-      <button class="obx-btn" id="obx-next">Keep these ✓</button></div>`;
-    if (step === 2) ob.innerHTML = `<div class="obx-wrap">
-      <div class="obx-dots">${dots}</div>
-      <div class="obx-t" style="text-align:left">Pick your focus</div>
-      <div class="obx-s" style="text-align:left">One to build, one to eliminate — 30 days of extra attention.</div>
-      <div class="obx-lbl" style="color:#97C459">▲ BUILDING</div>
-      ${obHabits.good.filter(Boolean).map(h => `<div class="obx-item ${focus.good === h ? 'sel' : ''}" data-fg="${h}"><span>${focus.good === h ? '●' : '○'} ${h}</span></div>`).join('')}
-      <div class="obx-lbl" style="color:#F09595">▼ ELIMINATING</div>
-      ${obHabits.bad.filter(Boolean).map(h => `<div class="obx-item ${focus.bad === h ? 'selbad' : ''}" data-fb="${h}"><span>${focus.bad === h ? '●' : '○'} ${h}</span></div>`).join('')}
-      <button class="obx-btn" id="obx-next" ${focus.good && focus.bad ? '' : 'disabled'}>Continue →</button></div>`;
-    if (step === 3) ob.innerHTML = `<div class="obx-wrap">
-      <div class="obx-dots">${dots}</div>
-      <div class="obx-big">🎉</div>
-      <div class="obx-t">You're ready.</div>
-      <div class="obx-s">Six habits. Two in focus.<br>Today's card is waiting.</div>
-      <button class="obx-btn" id="obx-next">Tick your first habit →</button>
-      <div class="obx-foot">Writes your habits to the sheet · never shows again</div></div>`;
-
+    const kicker = (t, c) => `<div class="ink-k" style="color:${c}">${t}</div>`;
+    let body = '';
+    if (step === 0) body = `
+      <div class="obx-hero"><img src="/icons/favicon.svg" alt="">
+        <div class="obx-h" style="font-size:30px">One habit at a time.</div>
+        <div class="obx-s">Three minutes from here to your first checkmark.</div></div>
+      <div class="obx-kind"><span class="ic" style="background:var(--accent-tint);color:var(--good-color)">${OB_UP}</span>
+        <div><b style="color:var(--good-color)">Build · good habits</b><div>Tick when you did it. Exercise, read, sleep on time.</div></div></div>
+      <div class="obx-kind"><span class="ic" style="background:var(--bad-bg);color:var(--bad-color)">${OB_DOWN}</span>
+        <div><b style="color:var(--bad-color)">Avoid · bad habits</b><div>Tick when you resisted. A tick is a win, both ways.</div></div></div>`;
+    if (step === 1) body = `
+      <div style="display:flex;flex-direction:column;gap:6px"><div class="obx-h">Your habits</div>
+        <div class="obx-s">Six classics to start. Make them yours. At least 3 of each, up to 7.</div></div>
+      <div class="obx-group">${kicker('Avoid', 'var(--bad-color)')}${obRows('bad')}</div>
+      <div class="obx-group">${kicker('Build', 'var(--good-color)')}${obRows('good')}</div>`;
+    if (step === 2) body = `
+      <div style="display:flex;flex-direction:column;gap:6px"><div class="obx-h">Pick your focus</div>
+        <div class="obx-s">One to build, one to eliminate. 30 days of extra attention.</div></div>
+      <div class="obx-group">${kicker('Building', 'var(--good-color)')}${obPicks('good')}</div>
+      <div class="obx-group">${kicker('Eliminating', 'var(--bad-color)')}${obPicks('bad')}</div>`;
+    if (step === 3) {
+      const n = obHabits.bad.filter(Boolean).length + obHabits.good.filter(Boolean).length;
+      body = `
+      <div style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:12px;padding-top:40px">${OB_TICK}
+        <div style="height:8px"></div><div class="obx-h" style="font-size:30px">You’re ready.</div>
+        <div class="obx-s">Today’s card is waiting.</div></div>
+      <div class="obx-sum"><div><span>Habits</span><b>${n}</b></div><hr>
+        <div><span>Building</span><b style="color:var(--good-color)">${esc(focus.good || '')}</b></div><hr>
+        <div><span>Eliminating</span><b style="color:var(--bad-color)">${esc(focus.bad || '')}</b></div></div>`;
+    }
+    ob.innerHTML = `<div class="obx-wrap">${obSteps()}${body}</div>`;
+    paintFoot();
   }
 
   async function obNext() {
@@ -729,17 +817,20 @@
       const nBad = obHabits.bad.filter(Boolean).length;
       const nGood = obHabits.good.filter(Boolean).length;
       if (nBad < 3 || nGood < 3) {
-        alert('You need at least 3 good and 3 bad habits.'); return;
+        obError = 'You need at least 3 good and 3 bad habits.';
+        paintFoot(); return;
       }
-      focus.good = obHabits.good.filter(Boolean)[0];
-      focus.bad = obHabits.bad.filter(Boolean)[0];
+      obError = '';
+      if (!obHabits.good.filter(Boolean).includes(focus.good)) focus.good = obHabits.good.filter(Boolean)[0];
+      if (!obHabits.bad.filter(Boolean).includes(focus.bad)) focus.bad = obHabits.bad.filter(Boolean)[0];
     }
     if (step === 3) { await obFinish(); return; }
     step++; obRender();
+    ob.scrollTop = 0;
   }
 
   async function obFinish() {
-    const btn = $('#obx-next', ob);
+    const btn = $('#obx-next', obFoot);
     btn.disabled = true; btn.textContent = 'Setting up…';
     try {
       // sync habit list: rename / add / remove via existing endpoint
