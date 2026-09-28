@@ -1,11 +1,12 @@
 const { google } = require('googleapis');
 const { resolveSheetId } = require('./_user');
 const { todayFrom } = require('./_date');
-const { serialToDate, isChecked, computeStreakAcrossYear, countFocusTicks,
-        FOCUS_WINDOW_DAYS } = require('./_streak');
-const { sheetYearFromGrids, yearState, outOfYearPayload } = require('./_year');
-const { computeTrophies, monthTicks, elapsedThisMonth } = require('./_trophies');
-const { findCurrentWeek, WEEK_START_ROWS } = require('./_week');
+const { serialToDate, isChecked, FOCUS_WINDOW_DAYS } = require('./_streak');
+const { sheetEndFromGrids, yearState, outOfYearPayload } = require('./_year');
+const { computeTrophiesForYear, elapsedThisMonth } = require('./_trophies');
+const { findCurrentWeek } = require('./_week');
+const { readArchives } = require('./_archive');
+const TL = require('./_timeline');
 const CP = require('./_controlPanel');
 
 
@@ -16,19 +17,16 @@ const CP = require('./_controlPanel');
 //                T=Weakest (19), U=Signal (20)
 // Reads use UNFORMATTED_VALUE: dates arrive as serial numbers,
 // checkboxes as booleans, percents as 0..1 numbers.
+//
+// Every number below the calendar comes from the ONE TIMELINE across the
+// years (_timeline.js): the twelve live tabs plus the "Archive <year>"
+// tabs, one entry per calendar date. Streak, focus counters, the weekly
+// trend and the trophies therefore survive new year. Weekly percentages
+// are computed from the raw ticks (Mon-Sun), not from the sheet's own
+// summary rows.
 
-const COL_GH_WEEKLY   = 17; // R
 const COL_WEAKEST     = 19; // T
 const COL_SIGNAL      = 20; // U
-
-// serialToDate / isChecked / computeStreak come from _streak.js so that
-// toggle-habit derives the streak from exactly the same rule.
-
-function toPercent(raw) {
-  const n = typeof raw === 'number' ? raw : parseFloat(raw);
-  if (isNaN(n)) return 0;
-  return n > 1 ? Math.round(n) : Math.round(n * 100);
-}
 
 function colIndexToLetter(index) {
   let letter = '';
@@ -55,11 +53,10 @@ module.exports = async (req, res) => {
     const sheetId = await resolveSheetId(req);
     if (!sheetId) return res.status(404).json({ error: 'unknown user' });
 
-    // ── 1. READ EVERYTHING IN ONE CALL ───────────────────────
-    // Twelve month tabs + the two Control Panel ranges. The streak and the
-    // focus counters span the whole year, so the whole year has to be here;
-    // one batchGet is also one API call instead of the three separate
-    // values.get calls this used to make.
+    // ── 1. READ EVERYTHING ───────────────────────────────────
+    // One batchGet for the twelve month tabs + the two Control Panel
+    // ranges, and in parallel the year archives (one metadata call for the
+    // tab names, one batchGet for their rows — none for a new customer).
     const today = todayFrom(req); // client's local date (?date=YYYY-MM-DD) or server midnight
     const monthNames = ["January","February","March","April","May","June",
                         "July","August","September","October","November","December"];
@@ -69,30 +66,38 @@ module.exports = async (req, res) => {
     const ranges = monthNames.map(m => `'${m}'!A1:${lastColLetter}46`);
     ranges.push(CP.HABITS_RANGE, CP.FOCUS_SEARCH_RANGE);
 
-    const batch = await sheets.spreadsheets.values.batchGet({
-      spreadsheetId: sheetId,
-      ranges,
-      valueRenderOption: 'UNFORMATTED_VALUE'
-    });
+    const [batch, archives] = await Promise.all([
+      sheets.spreadsheets.values.batchGet({
+        spreadsheetId: sheetId,
+        ranges,
+        valueRenderOption: 'UNFORMATTED_VALUE'
+      }),
+      readArchives(sheets, sheetId)
+    ]);
     const vr = batch.data.valueRanges || [];
     const monthGrids = vr.slice(0, 12).map(r => (r && r.values) || []);
     const configRows = (vr[12] && vr[12].values) || [];
     const focusData  = (vr[13] && vr[13].values) || [];
-    const monthData  = monthGrids[today.getMonth()];
 
+    const slots = CP.readSlots(configRows);
     const badHabits = [];
     const goodHabits = [];
 
     // Type and column index follow the ROW POSITION, so empty slots in the
-    // middle do not shift later habits.
-    CP.readSlots(configRows).forEach(s => {
+    // middle do not shift later habits. The key is what the timeline
+    // matches habits on across the years.
+    slots.forEach(s => {
       if (!CP.isHabit(s)) return;
-      const h = { name: s.name, status: s.status, note: s.note, colIndex: s.colIndex };
+      const h = {
+        key: TL.habitKey(s.type, s.name),
+        name: s.name, status: s.status, note: s.note, colIndex: s.colIndex
+      };
       (s.type === 'bad' ? badHabits : goodHabits).push(h);
     });
 
     const activeBad    = badHabits.filter(h => h.status === 'active');
     const activeGood   = goodHabits.filter(h => h.status === 'active');
+    const activeGoodKeys = activeGood.map(h => h.key);
 
     // ── 2. FOCUS HABITS ──────────────────────────────────────
     // The focus cells are found by their Building:/Eliminating: labels
@@ -114,40 +119,23 @@ module.exports = async (req, res) => {
     const badFocusHabit  = findHabit(badHabits, badFocus);
 
     // ── YEAR GATE ────────────────────────────────────────────
-    // On 1 January the month tabs still hold last year's dates. Every
-    // number below (week selection, streak, percentages, trophies) would
-    // be derived from a year that is over, so stop here and let the app
-    // explain instead.
-    const year = yearState(sheetYearFromGrids(monthGrids), today);
-    if (year.outOfYear) return res.status(200).json(outOfYearPayload(year));
+    // The sheet is over only when today is AFTER its last dated day (the
+    // 2026 sheet runs through 3 Jan 2027). Then everything below would be
+    // derived from a finished sheet, so stop and let the app explain.
+    const year = yearState(sheetEndFromGrids(monthGrids), today);
+    if (year.outOfYear) return res.status(200).json(outOfYearPayload());
 
     // ── 3. FIND CURRENT WEEK ─────────────────────────────────
     // The week that contains today is not always in today's tab: the sheet
-    // moves a month's trailing partial week into the NEXT month's tab (see
-    // _week.js). The tab the week is found in is what the calendar shows
-    // and what ticks are written to; everything month-scoped below keeps
-    // reading today's tab or all tabs, as before.
-    const weekStartRows = WEEK_START_ROWS;
+    // moves a trailing partial week into the NEXT month's tab, and in the
+    // first days of January the live week can still be December's week 5
+    // (see _week.js). The tab the week is found in is what the calendar
+    // shows and what ticks are written to.
     const wk = findCurrentWeek(monthGrids, today);
     const weekGrid = monthGrids[wk.monthIdx] || [];
     const weekSheetName = monthNames[wk.monthIdx];
 
-    const weekRow    = wk.weekRow;
-    const summaryRow = weekRow + 8;
-
-    // Where "now" sits inside TODAY'S tab, for the trend numbers below.
-    // When the live week is in another tab, every dated week of today's
-    // tab is over, so the anchor points one past the last dated week.
-    let currentWeekIdx = wk.weekIdx;
-    const weekInOwnTab = wk.monthIdx === today.getMonth();
-    if (!weekInOwnTab) {
-      currentWeekIdx = 0;
-      for (let i = 0; i < weekStartRows.length; i++) {
-        if (monthData[weekStartRows[i]] && serialToDate(monthData[weekStartRows[i]][1])) {
-          currentWeekIdx = i + 1;
-        }
-      }
-    }
+    const weekRow = wk.weekRow;
 
     // ── 4. BUILD CALENDAR WEEK ───────────────────────────────
     const days = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
@@ -185,36 +173,25 @@ module.exports = async (req, res) => {
       weekData.push(dayData);
     }
 
-    // ── 5. WEEKLY % + TREND ──────────────────────────────────
-    // The live week's percent comes from the tab the week was found in;
-    // the trend stays within today's tab, whose dated weeks are the
-    // completed ones.
-    let weeklyPercent = 0;
-    if (weekGrid[summaryRow] && weekGrid[summaryRow][COL_GH_WEEKLY] !== undefined &&
-        weekGrid[summaryRow][COL_GH_WEEKLY] !== '') {
-      weeklyPercent = toPercent(weekGrid[summaryRow][COL_GH_WEEKLY]);
-    }
+    // ── 5. THE TIMELINE ──────────────────────────────────────
+    const tl = TL.buildTimeline(monthGrids, slots, archives, today);
+    const thisMonday = TL.mondayOf(today);
 
-    const weeklyTrend = [];
-    for (let i = 0; i < weekStartRows.length; i++) {
-      const sr = weekStartRows[i] + 8;
-      if (monthData[sr] && monthData[sr][COL_GH_WEEKLY] !== undefined && monthData[sr][COL_GH_WEEKLY] !== '') {
-        weeklyTrend.push(toPercent(monthData[sr][COL_GH_WEEKLY]));
-      } else {
-        weeklyTrend.push(0);
-      }
-    }
-    // Last 4 weeks ending with the live one. When the live week sits in
-    // another tab it has no slot in weeklyTrend, so it is appended from
-    // its own summary row instead.
-    const last4Weeks = weekInOwnTab
-      ? weeklyTrend.slice(Math.max(0, currentWeekIdx - 3), currentWeekIdx + 1)
-      : weeklyTrend.slice(Math.max(0, currentWeekIdx - 3), currentWeekIdx).concat([weeklyPercent]);
-    const positive   = weeklyTrend.filter(w => w > 0);
-    const bestWeek   = positive.length > 0 ? Math.max(...positive) : 0;
+    // ── 6. WEEKLY % + TREND + SIGNAL ─────────────────────────
+    // Mon-Sun weeks from the raw ticks of the active good habits: ticked /
+    // (habits x days seen). The live week counts its elapsed days only.
+    // The window is simply the last calendar weeks, wherever their days
+    // live, so the trend rolls over month and year ends.
+    const weeklyPercent = TL.weekPercent(tl, activeGoodKeys, thisMonday) || 0;
 
-    // ── 6. SMART SIGNAL ──────────────────────────────────────
-    const completedWeeks = weeklyTrend.slice(0, currentWeekIdx);
+    const completedWeeks = [];
+    for (let k = 4; k >= 1; k--) {
+      const p = TL.weekPercent(tl, activeGoodKeys, TL.addDays(thisMonday, -7 * k));
+      if (p !== null) completedWeeks.push(p);
+    }
+    const last4Weeks = completedWeeks.slice(-3).concat([weeklyPercent]);
+    const bestWeek = TL.bestWeekEver(tl);
+
     const recent2    = completedWeeks.slice(-2);
     const older2     = completedWeeks.slice(-4, -2);
     const recent2Avg = recent2.length > 0 ? Math.round(recent2.reduce((a,b) => a+b,0) / recent2.length) : 0;
@@ -241,64 +218,34 @@ module.exports = async (req, res) => {
     }
 
     // ── 7. HABITS ON TRACK + MOST IMPROVED ──────────────────
-    // The anchor can point one past the last week slot (live week in the
-    // next tab), so slots outside the grid are skipped.
-    const prev2WeeksRows = [];
-    for (let i = Math.max(0, currentWeekIdx - 1); i <= currentWeekIdx; i++) {
-      if (weekStartRows[i] === undefined) continue;
-      for (let d = 0; d < 7; d++) prev2WeeksRows.push(weekStartRows[i] + d);
-    }
+    // This week and the last (elapsed days), against the two weeks before
+    // those — all from the timeline, so the windows roll over month ends.
+    const inRange = (from, to) => tl.days.filter(d => d.date >= from && d.date <= to);
+    const recentDays = inRange(TL.addDays(thisMonday, -7), today);
+    const olderDays  = inRange(TL.addDays(thisMonday, -21), TL.addDays(thisMonday, -8));
 
-    const isPastRow = r => {
-      const dt = monthData[r] ? serialToDate(monthData[r][1]) : null;
-      return dt !== null && dt <= today;
-    };
-
-    const totalDays2 = prev2WeeksRows.filter(isPastRow).length;
+    const totalDays2     = recentDays.length;
+    const totalOlderDays = olderDays.length;
 
     let habitsOnTrack = 0;
-    activeGood.forEach(h => {
-      let count = 0;
-      prev2WeeksRows.forEach(r => {
-        if (monthData[r] && isChecked(monthData[r][h.colIndex])) count++;
-      });
-      if (totalDays2 > 0 && count / totalDays2 >= 0.7) habitsOnTrack++;
-    });
-
-    const olderWeeksRows = [];
-    for (let i = Math.max(0, currentWeekIdx - 3); i < Math.max(0, currentWeekIdx - 1); i++) {
-      if (weekStartRows[i] === undefined) continue;
-      for (let d = 0; d < 7; d++) olderWeeksRows.push(weekStartRows[i] + d);
-    }
-
-    const totalOlderDays = olderWeeksRows.filter(isPastRow).length;
-
     let prevHabitsOnTrack = 0;
-    activeGood.forEach(h => {
-      let count = 0;
-      olderWeeksRows.forEach(r => {
-        if (monthData[r] && isChecked(monthData[r][h.colIndex])) count++;
-      });
-      if (totalOlderDays > 0 && count / totalOlderDays >= 0.7) prevHabitsOnTrack++;
-    });
-
     let mostImproved    = null;
     let bestImprovement = -999;
     activeGood.forEach(h => {
-      let recentCount = 0, olderCount = 0;
-      prev2WeeksRows.forEach(r  => { if (monthData[r] && isChecked(monthData[r][h.colIndex])) recentCount++; });
-      olderWeeksRows.forEach(r => { if (monthData[r] && isChecked(monthData[r][h.colIndex])) olderCount++;  });
-      const recentPct   = prev2WeeksRows.length  > 0 ? recentCount / prev2WeeksRows.length  : 0;
-      const olderPct    = olderWeeksRows.length > 0 ? olderCount  / olderWeeksRows.length : 0;
+      const recentCount = TL.tickedIn(recentDays, h.key);
+      const olderCount  = TL.tickedIn(olderDays, h.key);
+      if (totalDays2 > 0 && recentCount / totalDays2 >= 0.7) habitsOnTrack++;
+      if (totalOlderDays > 0 && olderCount / totalOlderDays >= 0.7) prevHabitsOnTrack++;
+      const recentPct   = totalDays2 > 0 ? recentCount / totalDays2 : 0;
+      const olderPct    = totalOlderDays > 0 ? olderCount / totalOlderDays : 0;
       const improvement = recentPct - olderPct;
       if (improvement > bestImprovement) { bestImprovement = improvement; mostImproved = h.name; }
     });
 
     // ── 8. STREAK (past days only, today never counts) ───────
     // Derived for the response only; the sheet's own Apps Script owns
-    // Dashboard C7. Spans every tab of the year, so it no longer resets on
-    // the 1st of a month.
-    const streak = computeStreakAcrossYear(monthGrids, activeGood, today);
+    // Dashboard C7. Walks the timeline, so it survives new year.
+    const streak = TL.streakOf(tl, activeGoodKeys, today);
 
     const weakest   = weekGrid[weekRow] && weekGrid[weekRow][COL_WEAKEST]
       ? String(weekGrid[weekRow][COL_WEAKEST]).trim() : 'None';
@@ -309,30 +256,31 @@ module.exports = async (req, res) => {
     const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
     const daysElapsed  = Math.floor((today - firstOfMonth) / 86400000) + 1;
 
-    // Calendar days of this month so far. The month tab's week 1 reaches
-    // back into the previous month, so the tab's row count is not the
-    // month's day count.
+    // Calendar days of this month so far; the month's early days can live
+    // in last year's archive, but they are calendar days all the same.
     const totalDays = elapsedThisMonth(today);
 
     // ── 10. TROPHIES + MONTH COUNTS ─────────────────────────
-    // One scan over all twelve tabs feeds the trophy case, the
-    // next-to-fall pick and every percentage below, so they cannot
-    // disagree. This used to read row 46, a sheet formula whose scoping
-    // could not be seen from here — the same trap column R was for the
-    // streak.
-    const trophyScan = computeTrophies(monthGrids, badHabits, today);
-    const goodTicks = monthTicks(monthGrids, activeGood, today);
-    const badTicks = trophyScan.ticksByHabit;
+    // One scan over the current CALENDAR year's timeline days feeds the
+    // trophy case, the next-to-fall pick and every percentage below, so
+    // they cannot disagree. Days that live in last year's archive (1-3
+    // January) count for this year's months all the same.
+    const curYear = today.getFullYear();
+    const yearDays = TL.daysOfYear(tl, curYear);
+    const monthDays = TL.daysOfMonth(tl, curYear, today.getMonth());
+
+    const trophyScan = computeTrophiesForYear(yearDays, badHabits, curYear, today.getMonth());
+    const badTicks = trophyScan.ticksByHabit; // by habit key
     const conqueredThisMonth = trophyScan.conqueredThisMonth;
 
     const pctOf = ticks => totalDays > 0 ? Math.round((ticks / totalDays) * 100) : 0;
     const goodHabitStats = activeGood.map(h => ({
       name: h.name,
-      percent: pctOf(goodTicks[h.colIndex] || 0)
+      percent: pctOf(TL.tickedIn(monthDays, h.key))
     }));
     const badHabitStats = activeBad.map(h => ({
       name: h.name,
-      percent: pctOf(badTicks[h.colIndex] || 0)
+      percent: pctOf(badTicks[h.key] || 0)
     }));
 
     const sortedBad = badHabitStats.slice().sort((a, b) => a.percent - b.percent);
@@ -344,16 +292,6 @@ module.exports = async (req, res) => {
     // no month won anywhere this year. One that has already earned a cup
     // does not need the focus, and one conquered THIS month is covered by
     // the same rule, since that month is in the case.
-    //
-    // Only eligibility changes here. The ranking is the same as before —
-    // most days avoided this month takes the slot — and trophy awarding is
-    // untouched: a habit that loses the focus still earns every month it
-    // clears, this one included.
-    //
-    // Eligibility reads won months rather than the count field, because the
-    // case renders months. The two are the same set anyway: every month under
-    // its threshold caps the year at 310 ticks, short of the 328 the year
-    // trophy needs, so the count cannot be non-zero with no month won.
     const monthBar = trophyScan.trophies.thresholds.months[today.getMonth()];
     const hasTrophy = {};
     trophyScan.trophies.habits.forEach(h => {
@@ -363,7 +301,7 @@ module.exports = async (req, res) => {
     const closestOf = list => {
       let name = null, ticks = 0;
       list.forEach(h => {
-        const c = badTicks[h.colIndex] || 0;
+        const c = badTicks[h.key] || 0;
         if (name === null || c > ticks) { ticks = c; name = h.name; }
       });
       return { name, ticks };
@@ -377,7 +315,7 @@ module.exports = async (req, res) => {
     const nextToFallDays = pick.ticks;
     const daysToKill = Math.max(0, monthBar - nextToFallDays);
 
-    // ── 13. WEEK START + STREAK WRITE ────────────────────────
+    // ── 12. WEEK START ───────────────────────────────────────
     const weekStartDateObj = weekGrid[weekRow] ? serialToDate(weekGrid[weekRow][1]) : null;
     const weekStartDate = weekStartDateObj
       ? weekStartDateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
@@ -395,8 +333,8 @@ module.exports = async (req, res) => {
       sheetName:    weekSheetName,
       goodFocus:    goodFocus || 'Not set',
       badFocus:     badFocus || 'Not set',
-      goodCount:    goodFocusHabit ? countFocusTicks(monthGrids, goodFocusHabit.colIndex, today) : 0,
-      badCount:     badFocusHabit ? countFocusTicks(monthGrids, badFocusHabit.colIndex, today) : 0,
+      goodCount:    goodFocusHabit ? TL.focusTicks(tl, goodFocusHabit.key, today, FOCUS_WINDOW_DAYS) : 0,
+      badCount:     badFocusHabit ? TL.focusTicks(tl, badFocusHabit.key, today, FOCUS_WINDOW_DAYS) : 0,
       goodFocusFound: !!goodFocusHabit,
       badFocusFound:  !!badFocusHabit,
       focusWindowDays: FOCUS_WINDOW_DAYS,

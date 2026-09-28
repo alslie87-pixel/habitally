@@ -1,33 +1,36 @@
-// Trophies for bad habits — Delivery 1, current year only.
+// Trophies for bad habits.
 //
-// A bad habit is ticked on the days it was AVOIDED, so a high count is a good
-// month. Three levels, all derived from the grid on every request; nothing is
-// stored and nothing is written to the sheet.
+// A bad habit is ticked on the days it was AVOIDED, so a high count is a
+// good month. Three levels, all derived on every request from the one
+// timeline across the years (_timeline.js); nothing is stored and nothing
+// is written to the sheet.
 //
-//   MONTH   one per (habit, month), collectable: the same habit in April and
-//           in June is two trophies. Won when the ticks inside that CALENDAR
-//           month reach the month's threshold.
+//   MONTH   one per (habit, month), collectable: the same habit in April
+//           and in June is two trophies. Won when the ticks inside that
+//           CALENDAR month reach the month's threshold.
 //   SEASON  won when all three of the season's month trophies are won.
 //   YEAR    won on the year's own threshold, independent of the month
-//           trophies, so a year carried by strong months survives a weak one.
+//           trophies, so a year carried by strong months survives a weak
+//           one.
 //
-// Thresholds are 90% of the real number of days, rounded down, derived rather
-// than hardcoded: 31d->27, 30d->27, 29d->26, 28d->25, 365d->328, 366d->329.
+// Thresholds are 90% of the real number of days, rounded down, derived
+// rather than hardcoded: 31d->27, 30d->27, 29d->26, 28d->25, 365d->328,
+// 366d->329.
 //
-// "That month" means the CALENDAR month. A month tab's week 1 starts on the
-// Monday on or before the 1st, so the September tab also carries 31 August,
-// and whichever tab the app happened to be showing is where that tick landed.
-// Every tab is therefore scanned, each date is counted once (a date ticked in
-// either copy counts), and dates are then bucketed by their own month.
+// "That month" and "that year" mean the CALENDAR month and year. The
+// timeline already holds each date exactly once, wherever it lives — a
+// month tab, or last year's archive: the current year's January trophy
+// counts 1-3 January even while those days sit in the previous sheet's
+// archive. Past years are computed per calendar year from the same
+// timeline.
 
-const WEEK_START_ROWS = [1, 10, 19, 28, 37]; // 0-based rows (sheet rows 2, 11, 20, 29, 38)
-const DATE_COL = 1;                          // column B
 const RATE = 0.9;
 
-// Winter spans the turn of the year, but the sheet only ever holds one year:
-// December belongs to the previous sheet. Delivery 1 therefore reads winter as
-// the three winter months that fall inside THIS calendar year, and says so in
-// the label. Delivery 2 swaps `months` and `scope` here; nothing else changes.
+// Winter spans the turn of the year, but a year's trophies are computed per
+// calendar year: December belongs to its own year. Delivery 1 therefore
+// reads winter as the three winter months inside THAT calendar year, and
+// says so in the label. Delivery 2 swaps `months` and `scope` here; nothing
+// else changes.
 const SEASONS = [
   { key: 'winter', label: 'Winter (Jan, Feb, Dec)', months: [0, 1, 11], scope: 'same-year' },
   { key: 'spring', label: 'Spring', months: [2, 3, 4],  scope: 'same-year' },
@@ -35,25 +38,9 @@ const SEASONS = [
   { key: 'fall',   label: 'Fall',   months: [8, 9, 10], scope: 'same-year' }
 ];
 
-// Habit statuses that keep their trophies. A habit you beat and archived has
-// earned what it earned; a removed one (ghost/retired) drops out of the case.
+// Habit statuses that keep their trophies. A habit you beat and archived
+// has earned what it earned; a removed one (ghost/retired) drops out.
 const KEEPS_TROPHIES = ['active', 'conquered'];
-
-const pad2 = n => (n < 10 ? '0' : '') + n;
-const isoOf = d => d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
-const isChecked = v => v === true || v === 'TRUE';
-
-function serialToDate(v) {
-  if (v === null || v === undefined || v === '') return null;
-  if (typeof v === 'number') {
-    const ud = new Date(Date.UTC(1899, 11, 30) + Math.round(v) * 86400000);
-    return new Date(ud.getUTCFullYear(), ud.getUTCMonth(), ud.getUTCDate());
-  }
-  const d = new Date(v);
-  if (isNaN(d)) return null;
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
 
 const daysInMonth = (year, monthIndex) => new Date(year, monthIndex + 1, 0).getDate();
 const daysInYear = year => (Date.UTC(year + 1, 0, 1) - Date.UTC(year, 0, 1)) / 86400000;
@@ -62,53 +49,29 @@ const daysInYear = year => (Date.UTC(year + 1, 0, 1) - Date.UTC(year, 0, 1)) / 8
 const monthThreshold = (year, monthIndex) => Math.floor(daysInMonth(year, monthIndex) * RATE);
 const yearThreshold = year => Math.floor(daysInYear(year) * RATE);
 
-// One entry per calendar date across every tab, past days only.
-// visit(date, row) is called once per date, for the copy of the row that is
-// most ticked, so a tick never gets lost to the tab it was not made in.
-function eachDayOnce(monthGrids, today, habits, visit) {
-  const best = new Map(); // iso -> { date, ticks: Set of colIndex }
-  (monthGrids || []).forEach(grid => {
-    if (!grid) return;
-    WEEK_START_ROWS.forEach(ws => {
-      for (let d = 0; d < 7; d++) {
-        const row = grid[ws + d];
-        if (!row) continue;
-        const date = serialToDate(row[DATE_COL]);
-        if (!date || date > today) continue;
-        const iso = isoOf(date);
-        let entry = best.get(iso);
-        if (!entry) { entry = { date, ticks: new Set() }; best.set(iso, entry); }
-        habits.forEach(h => { if (isChecked(row[h.colIndex])) entry.ticks.add(h.colIndex); });
-      }
-    });
-  });
-  best.forEach(entry => visit(entry.date, entry.ticks));
-}
-
 /**
- * monthGrids  twelve month tabs, unformatted values
- * badHabits   [{ name, status, colIndex }] — every bad habit, any status
- * today       the user's own local-midnight date
+ * days       timeline day entries whose date falls in `year` (the caller
+ *            filters, e.g. with _timeline.daysOfYear)
+ * badHabits  [{ key, name, status }] — every bad habit, any status; only
+ *            KEEPS_TROPHIES statuses are counted
+ * year       the calendar year the days belong to
+ * curMonth   today's month when `year` is the running year, else null
  *
  * Returns { trophies, conqueredThisMonth, ticksByHabit } where
- * ticksByHabit maps colIndex -> ticks in the CURRENT calendar month, so
- * get-habits can build its percentages from the same scan.
+ * ticksByHabit maps habit KEY -> ticks in the month `curMonth` (empty when
+ * curMonth is null), so get-habits builds its percentages from this scan.
  */
-function computeTrophies(monthGrids, badHabits, today) {
-  const year = today.getFullYear();
-  const curMonth = today.getMonth();
+function computeTrophiesForYear(days, badHabits, year, curMonth) {
   const habits = (badHabits || []).filter(h => KEEPS_TROPHIES.indexOf(h.status) !== -1);
 
-  // colIndex -> 12 monthly tick counts
+  // key -> 12 monthly tick counts
   const counts = new Map();
-  habits.forEach(h => counts.set(h.colIndex, new Array(12).fill(0)));
+  habits.forEach(h => counts.set(h.key, new Array(12).fill(0)));
 
-  eachDayOnce(monthGrids, today, habits, (date, ticks) => {
-    if (date.getFullYear() !== year) return;      // the January tab's December tail
-    const m = date.getMonth();
-    ticks.forEach(col => {
-      const row = counts.get(col);
-      if (row) row[m]++;
+  (days || []).forEach(day => {
+    const m = day.date.getMonth();
+    habits.forEach(h => {
+      if (day.ticks.has(h.key)) counts.get(h.key)[m]++;
     });
   });
 
@@ -120,7 +83,7 @@ function computeTrophies(monthGrids, badHabits, today) {
   const ticksByHabit = {};
 
   const habitTrophies = habits.map(h => {
-    const perMonth = counts.get(h.colIndex);
+    const perMonth = counts.get(h.key);
 
     const months = [];
     for (let m = 0; m < 12; m++) {
@@ -146,8 +109,10 @@ function computeTrophies(monthGrids, badHabits, today) {
                   seasons.filter(x => x.won).length +
                   (yearTrophy.won ? 1 : 0);
 
-    if (months[curMonth].won) conqueredThisMonth.push(h.name);
-    ticksByHabit[h.colIndex] = perMonth[curMonth];
+    if (curMonth !== null && curMonth !== undefined) {
+      if (months[curMonth].won) conqueredThisMonth.push(h.name);
+      ticksByHabit[h.key] = perMonth[curMonth];
+    }
 
     return { name: h.name, status: h.status, months, seasons, year: yearTrophy, count };
   });
@@ -163,30 +128,13 @@ function computeTrophies(monthGrids, badHabits, today) {
   };
 }
 
-/**
- * Ticks in the current calendar month for any habit list (used for the good
- * habits too, so every percentage on the page comes from this one scan).
- * Returns colIndex -> ticks.
- */
-function monthTicks(monthGrids, habits, today) {
-  const year = today.getFullYear();
-  const curMonth = today.getMonth();
-  const out = {};
-  (habits || []).forEach(h => { out[h.colIndex] = 0; });
-  eachDayOnce(monthGrids, today, habits || [], (date, ticks) => {
-    if (date.getFullYear() !== year || date.getMonth() !== curMonth) return;
-    ticks.forEach(col => { if (out[col] !== undefined) out[col]++; });
-  });
-  return out;
-}
-
 // Calendar days of the current month up to and including today.
 function elapsedThisMonth(today) {
   return today.getDate();
 }
 
 module.exports = {
-  computeTrophies, monthTicks, elapsedThisMonth,
+  computeTrophiesForYear, elapsedThisMonth,
   monthThreshold, yearThreshold, daysInMonth, daysInYear,
   SEASONS, KEEPS_TROPHIES, RATE
 };
