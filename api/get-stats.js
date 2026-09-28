@@ -93,22 +93,28 @@ module.exports = async (req, res) => {
       if (p !== null) daily.push({ t: day.iso, p });
     });
 
-    let perfectDays = 0, bestDayEver = 0, comebacks = 0;
+    // Perfect days and comebacks sit next to "Habit wins" on the page, so
+    // like checksYTD they count the current year only. The "ever" numbers
+    // below (best day, best week, longest streak, trophies) stay all-time.
+    let perfectDays = 0, comebacks = 0;
     let prevDay = null;
-    allDays.forEach(day => {
+    yearDays.forEach(day => {
       const p = TL.dayPercent(day);
-      if (p !== null) {
-        if (p > bestDayEver) bestDayEver = p;
-        if (p >= 0.999) perfectDays++;
-      }
+      if (p !== null && p >= 0.999) perfectDays++;
       // comebacks: a >=66% day right after a <66% day (consecutive dates)
       if (prevDay) {
         const gap = (day.date - prevDay.date) / 86400000;
-        const cur = TL.dayPercent(day) || 0;
+        const cur = p || 0;
         const prev = TL.dayPercent(prevDay) || 0;
         if (gap === 1 && cur >= 0.66 && prev < 0.66) comebacks++;
       }
       prevDay = day;
+    });
+
+    let bestDayEver = 0;
+    allDays.forEach(day => {
+      const p = TL.dayPercent(day);
+      if (p !== null && p > bestDayEver) bestDayEver = p;
     });
     const bestWeekEver = TL.bestWeekEver(tl);
 

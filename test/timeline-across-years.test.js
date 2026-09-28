@@ -14,9 +14,10 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const { sheetEndFromGrids, sheetEndOfYear, week1Monday, outOfYearMessage } = require('../api/_year');
+const TL = require('../api/_timeline');
 const V = require('../api/_validate');
 const CP = require('../api/_controlPanel');
-const { at, buildYear, setTick, buildArchive,
+const { at, serialOf, buildYear, setTick, buildArchive,
         makeCpRows, buildFocusGrid, fakeRes, withFakeGoogleapis } = require('./helpers');
 
 const MONTHS = V.MONTHS;
@@ -232,4 +233,61 @@ test('a renamed habit is a new habit: no streak or count carried over', async ()
   const statsRes = await call(getStats, '2027-01-06');
   const run = statsRes.body.momentum.find(h => h.name === 'Run');
   assert.equal(run.bestStreak, 2);      // not Jog's 34-day run
+});
+
+// ── PR #27 follow-up fixes ─────────────────────────────────
+
+test('a date in two tabs keeps the most-ticked copy, never a blend', () => {
+  const mk = () => { const g = []; for (let r = 0; r < 46; r++) g.push([]); return g; };
+  const grids = Array.from({ length: 12 }, mk);
+  const date = at(2026, 2, 30);
+  grids[2][1][1] = serialOf(date); // the March copy: Exercise only
+  grids[2][1][9] = true;
+  grids[3][1][1] = serialOf(date); // the April copy: Read + No sugar
+  grids[3][1][10] = true;
+  grids[3][1][2] = true;
+
+  const slots = CP.readSlots(makeCpRows());
+  const tl = TL.buildTimeline(grids, slots, [], at(2026, 3, 10));
+  // April's two ticks beat March's one; a blend would show all three
+  assert.deepEqual(Array.from(tl.byIso.get('2026-03-30').ticks).sort(),
+    ['bad|no sugar', 'good|read']);
+
+  grids[3][1][2] = undefined; // now one tick each: the first copy wins
+  const tie = TL.buildTimeline(grids, slots, [], at(2026, 3, 10));
+  assert.deepEqual(Array.from(tie.byIso.get('2026-03-30').ticks), ['good|exercise']);
+});
+
+test('habits on track leaves today out: 5 of 7 last week counts on Monday', async () => {
+  const grids = buildYear(2026);
+  [8, 9, 10, 11, 12].forEach(d => setTick(grids, 2026, 5, d, 9)); // Exercise Mon-Fri
+  reset({ grids });
+
+  const res = await call(getHabits, '2026-06-15'); // the Monday after
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.habitsOnTrack, 1); // 5/7 = 71%, not 5/8 = 63%
+});
+
+test('perfect days and comebacks count the current year; the ever-numbers stay all-time', async () => {
+  const grids = buildYear(2027);
+  setTick(grids, 2027, 0, 5, 9);  // Jan 5 perfect; Jan 4 missed
+  setTick(grids, 2027, 0, 5, 10);
+  const missed = at(2026, 11, 15).getTime();
+  const archive = buildArchive(2026, ARCHIVE_HABITS, (d, slot) =>
+    (slot === 7 || slot === 8) &&
+    between(d, at(2026, 11, 1), at(2027, 0, 3)) &&
+    d.getTime() !== missed);
+  reset({ grids, archives: { 2026: archive } });
+
+  const res = await call(getStats, '2027-01-06');
+  assert.equal(res.statusCode, 200);
+  const S = res.body;
+  // this year: Jan 1-3 (archive) + Jan 5; December's 30 perfect days are 2026's
+  assert.equal(S.perfectDays, 4);
+  // Jan 5 after the missed Jan 4; Dec 16 after Dec 15 belongs to 2026
+  assert.equal(S.comebacks, 1);
+  assert.equal(S.checksYTD, 8); // Jan 1-3 and Jan 5, two habits each
+  // the ever-numbers still span the years
+  assert.equal(S.momentum.find(h => h.name === 'Exercise').bestStreak, 19); // Dec 16 - Jan 3
+  assert.equal(S.bestDayEver, 100);
 });

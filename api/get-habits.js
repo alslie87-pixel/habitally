@@ -218,10 +218,12 @@ module.exports = async (req, res) => {
     }
 
     // ── 7. HABITS ON TRACK + MOST IMPROVED ──────────────────
-    // This week and the last (elapsed days), against the two weeks before
-    // those — all from the timeline, so the windows roll over month ends.
+    // This week and the last, against the two weeks before those — all
+    // from the timeline, so the windows roll over month ends. Today is
+    // left out, like the streak: the day is not over, and counting it
+    // would drop 5-of-7 habits below 70% every morning.
     const inRange = (from, to) => tl.days.filter(d => d.date >= from && d.date <= to);
-    const recentDays = inRange(TL.addDays(thisMonday, -7), today);
+    const recentDays = inRange(TL.addDays(thisMonday, -7), TL.addDays(today, -1));
     const olderDays  = inRange(TL.addDays(thisMonday, -21), TL.addDays(thisMonday, -8));
 
     const totalDays2     = recentDays.length;

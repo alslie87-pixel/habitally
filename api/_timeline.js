@@ -87,7 +87,11 @@ function buildTimeline(monthGrids, slots, archives, today) {
 
   const byIso = new Map();
 
-  // the live sheet first: it wins over the archives
+  // The live sheet first: it wins over the archives. An older sheet can
+  // hold the same date in TWO month tabs (the week 30 Mar - 5 Apr in both
+  // March and April); merging those copies would invent days that never
+  // happened, so the copy with the most ticks wins and a tie keeps the
+  // first one seen.
   const sheetGood = sheetHabits.filter(h => h.type === 'good' && h.status === 'active').map(h => h.key);
   (monthGrids || []).forEach(grid => {
     if (!grid) return;
@@ -98,9 +102,10 @@ function buildTimeline(monthGrids, slots, archives, today) {
         const date = serialToDate(row[DATE_COL]);
         if (!date || date > today) continue;
         const iso = isoOf(date);
-        let day = byIso.get(iso);
-        if (!day) { day = { iso, date, ticks: new Set(), goodActive: sheetGood }; byIso.set(iso, day); }
-        sheetHabits.forEach(h => { if (isChecked(row[h.colIndex])) day.ticks.add(h.key); });
+        const ticks = new Set();
+        sheetHabits.forEach(h => { if (isChecked(row[h.colIndex])) ticks.add(h.key); });
+        const seen = byIso.get(iso);
+        if (!seen || ticks.size > seen.ticks.size) byIso.set(iso, { iso, date, ticks, goodActive: sheetGood });
       }
     });
   });
