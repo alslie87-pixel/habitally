@@ -15,7 +15,7 @@ Guidance for Claude (and humans) working in this repo.
 | File | Sheet access | Purpose |
 |---|---|---|
 | `_user.js` | **read** (Customers sheet) | Resolves `?user=` + `?t=` to the customer's spreadsheet ID. |
-| `_controlPanel.js` | — | The Control Panel layout in one place: habit slots F7:H20 (row decides type: 7-13 bad, 14-20 good; column E is never read or written), focus C19 (build) / C20 (eliminate), Z1 marker, and the onboarding rule (Z1 unmarked + zero checkmarks). The app writes only F/G/H 7-20, C19:C20 and Z1 there. |
+| `_controlPanel.js` | — | The Control Panel layout in one place: habit slots F7:H20 (row decides type: 7-13 bad, 14-20 good; column E is never read or written), the focus cells found by their "Building:"/"Eliminating:" labels (searched in A-D rows 1-60, focus is the cell right of the label; C19/C20 when unlabeled), Z1 marker, and the onboarding rule (Z1 unmarked + zero checkmarks). The app writes only F/G/H 7-20, the two focus cells and Z1 there. |
 | `_date.js` | — | `todayFrom(req)`: the client's `?date=` or server midnight. |
 | `_validate.js` | **read** (Control Panel) | Shared input validation for the write endpoints. |
 | `_streak.js` | — | The streak rule and the focus-habit counter, both year-wide. |

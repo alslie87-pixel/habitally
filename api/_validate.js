@@ -8,8 +8,6 @@
 // Control Panel habit slots: see _controlPanel.js. Row position decides the
 // type and the column in the month tabs, exactly like get-habits.
 
-const CP = require('./_controlPanel');
-
 const MONTHS = ["January","February","March","April","May","June",
                 "July","August","September","October","November","December"];
 const WEEK_START_ROWS = [2, 11, 20, 29, 38];
@@ -52,19 +50,8 @@ function requirePost(req, res) {
   return true;
 }
 
-// Active habit names by type, from the Control Panel. Position-based like
-// get-habits: bad habits live in rows 7-13, good in 14-20.
-async function readActiveHabits(sheets, spreadsheetId) {
-  const r = await sheets.spreadsheets.values.get({ spreadsheetId, range: CP.HABITS_RANGE });
-  const out = { bad: [], good: [] };
-  CP.readSlots(r.data.values).forEach(s => {
-    if (s.name && s.status === 'active') out[s.type].push(s.name);
-  });
-  return out;
-}
-
 module.exports = {
   MONTHS, DAY_ROWS, COL_MIN, COL_MAX, TYPES, NAME_MAX, NOTE_MAX,
   toInt, isMonthName, isDayRow, isHabitCol, isType, isChecked,
-  textField, requirePost, readActiveHabits
+  textField, requirePost
 };
