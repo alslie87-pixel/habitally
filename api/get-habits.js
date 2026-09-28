@@ -5,6 +5,7 @@ const { serialToDate, isChecked, computeStreakAcrossYear, countFocusTicks,
         FOCUS_WINDOW_DAYS } = require('./_streak');
 const { sheetYearFromGrids, yearState, outOfYearPayload } = require('./_year');
 const { computeTrophies, monthTicks, elapsedThisMonth } = require('./_trophies');
+const { findCurrentWeek, WEEK_START_ROWS } = require('./_week');
 const CP = require('./_controlPanel');
 
 
@@ -119,24 +120,32 @@ module.exports = async (req, res) => {
     if (year.outOfYear) return res.status(200).json(outOfYearPayload(year));
 
     // ── 3. FIND CURRENT WEEK ─────────────────────────────────
-    const weekStartRows = [1, 10, 19, 28, 37]; // 0-based array rows (sheet rows 2,11,20,29,38)
-    let currentWeekIdx = 0;
+    // The week that contains today is not always in today's tab: the sheet
+    // moves a month's trailing partial week into the NEXT month's tab (see
+    // _week.js). The tab the week is found in is what the calendar shows
+    // and what ticks are written to; everything month-scoped below keeps
+    // reading today's tab or all tabs, as before.
+    const weekStartRows = WEEK_START_ROWS;
+    const wk = findCurrentWeek(monthGrids, today);
+    const weekGrid = monthGrids[wk.monthIdx] || [];
+    const weekSheetName = monthNames[wk.monthIdx];
 
-    for (let i = 0; i < weekStartRows.length; i++) {
-      const row = weekStartRows[i];
-      const dateVal = monthData[row] ? serialToDate(monthData[row][1]) : null;
-      if (dateVal) {
-        const endDate = new Date(dateVal);
-        endDate.setDate(endDate.getDate() + 6);
-        if (today >= dateVal && today <= endDate) {
-          currentWeekIdx = i;
-          break;
+    const weekRow    = wk.weekRow;
+    const summaryRow = weekRow + 8;
+
+    // Where "now" sits inside TODAY'S tab, for the trend numbers below.
+    // When the live week is in another tab, every dated week of today's
+    // tab is over, so the anchor points one past the last dated week.
+    let currentWeekIdx = wk.weekIdx;
+    const weekInOwnTab = wk.monthIdx === today.getMonth();
+    if (!weekInOwnTab) {
+      currentWeekIdx = 0;
+      for (let i = 0; i < weekStartRows.length; i++) {
+        if (monthData[weekStartRows[i]] && serialToDate(monthData[weekStartRows[i]][1])) {
+          currentWeekIdx = i + 1;
         }
       }
     }
-
-    const weekRow    = weekStartRows[currentWeekIdx];
-    const summaryRow = weekRow + 8;
 
     // ── 4. BUILD CALENDAR WEEK ───────────────────────────────
     const days = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
@@ -144,8 +153,8 @@ module.exports = async (req, res) => {
 
     for (let d = 0; d < 7; d++) {
       const row = weekRow + d;
-      if (!monthData[row]) continue;
-      const dateVal = serialToDate(monthData[row][1]);
+      if (!weekGrid[row]) continue;
+      const dateVal = serialToDate(weekGrid[row][1]);
 
       const dayData = {
         day:     days[d],
@@ -159,14 +168,14 @@ module.exports = async (req, res) => {
       activeBad.forEach(h => {
         dayData.bad.push({
           name:    h.name,
-          checked: isChecked(monthData[row][h.colIndex]),
+          checked: isChecked(weekGrid[row][h.colIndex]),
           col:     h.colIndex + 1
         });
       });
       activeGood.forEach(h => {
         dayData.good.push({
           name:    h.name,
-          checked: isChecked(monthData[row][h.colIndex]),
+          checked: isChecked(weekGrid[row][h.colIndex]),
           col:     h.colIndex + 1
         });
       });
@@ -175,10 +184,13 @@ module.exports = async (req, res) => {
     }
 
     // ── 5. WEEKLY % + TREND ──────────────────────────────────
+    // The live week's percent comes from the tab the week was found in;
+    // the trend stays within today's tab, whose dated weeks are the
+    // completed ones.
     let weeklyPercent = 0;
-    if (monthData[summaryRow] && monthData[summaryRow][COL_GH_WEEKLY] !== undefined &&
-        monthData[summaryRow][COL_GH_WEEKLY] !== '') {
-      weeklyPercent = toPercent(monthData[summaryRow][COL_GH_WEEKLY]);
+    if (weekGrid[summaryRow] && weekGrid[summaryRow][COL_GH_WEEKLY] !== undefined &&
+        weekGrid[summaryRow][COL_GH_WEEKLY] !== '') {
+      weeklyPercent = toPercent(weekGrid[summaryRow][COL_GH_WEEKLY]);
     }
 
     const weeklyTrend = [];
@@ -190,7 +202,12 @@ module.exports = async (req, res) => {
         weeklyTrend.push(0);
       }
     }
-    const last4Weeks = weeklyTrend.slice(Math.max(0, currentWeekIdx - 3), currentWeekIdx + 1);
+    // Last 4 weeks ending with the live one. When the live week sits in
+    // another tab it has no slot in weeklyTrend, so it is appended from
+    // its own summary row instead.
+    const last4Weeks = weekInOwnTab
+      ? weeklyTrend.slice(Math.max(0, currentWeekIdx - 3), currentWeekIdx + 1)
+      : weeklyTrend.slice(Math.max(0, currentWeekIdx - 3), currentWeekIdx).concat([weeklyPercent]);
     const positive   = weeklyTrend.filter(w => w > 0);
     const bestWeek   = positive.length > 0 ? Math.max(...positive) : 0;
 
@@ -222,9 +239,13 @@ module.exports = async (req, res) => {
     }
 
     // ── 7. HABITS ON TRACK + MOST IMPROVED ──────────────────
+    // The anchor can point one past the last week slot (live week in the
+    // next tab), so slots outside the grid are skipped.
     const prev2WeeksRows = [];
-    for (let i = Math.max(0, currentWeekIdx - 1); i <= currentWeekIdx; i++)
+    for (let i = Math.max(0, currentWeekIdx - 1); i <= currentWeekIdx; i++) {
+      if (weekStartRows[i] === undefined) continue;
       for (let d = 0; d < 7; d++) prev2WeeksRows.push(weekStartRows[i] + d);
+    }
 
     const isPastRow = r => {
       const dt = monthData[r] ? serialToDate(monthData[r][1]) : null;
@@ -243,8 +264,10 @@ module.exports = async (req, res) => {
     });
 
     const olderWeeksRows = [];
-    for (let i = Math.max(0, currentWeekIdx - 3); i < Math.max(0, currentWeekIdx - 1); i++)
+    for (let i = Math.max(0, currentWeekIdx - 3); i < Math.max(0, currentWeekIdx - 1); i++) {
+      if (weekStartRows[i] === undefined) continue;
       for (let d = 0; d < 7; d++) olderWeeksRows.push(weekStartRows[i] + d);
+    }
 
     const totalOlderDays = olderWeeksRows.filter(isPastRow).length;
 
@@ -275,10 +298,10 @@ module.exports = async (req, res) => {
     // the 1st of a month.
     const streak = computeStreakAcrossYear(monthGrids, activeGood, today);
 
-    const weakest   = monthData[weekRow] && monthData[weekRow][COL_WEAKEST]
-      ? String(monthData[weekRow][COL_WEAKEST]).trim() : 'None';
-    const signalMsg = monthData[weekRow] && monthData[weekRow][COL_SIGNAL]
-      ? String(monthData[weekRow][COL_SIGNAL]).trim() : 'Keep going!';
+    const weakest   = weekGrid[weekRow] && weekGrid[weekRow][COL_WEAKEST]
+      ? String(weekGrid[weekRow][COL_WEAKEST]).trim() : 'None';
+    const signalMsg = weekGrid[weekRow] && weekGrid[weekRow][COL_SIGNAL]
+      ? String(weekGrid[weekRow][COL_SIGNAL]).trim() : 'Keep going!';
 
     // ── 9. DAYS ELAPSED + TOTAL TRACKABLE ───────────────────
     const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
@@ -353,7 +376,7 @@ module.exports = async (req, res) => {
     const daysToKill = Math.max(0, monthBar - nextToFallDays);
 
     // ── 13. WEEK START + STREAK WRITE ────────────────────────
-    const weekStartDateObj = monthData[weekRow] ? serialToDate(monthData[weekRow][1]) : null;
+    const weekStartDateObj = weekGrid[weekRow] ? serialToDate(weekGrid[weekRow][1]) : null;
     const weekStartDate = weekStartDateObj
       ? weekStartDateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
       : 'N/A';
@@ -367,7 +390,7 @@ module.exports = async (req, res) => {
       weakest,
       signal:       smartSignal || signalMsg,
       week:         weekData,
-      sheetName:    monthName,
+      sheetName:    weekSheetName,
       goodFocus:    goodFocus || 'Not set',
       badFocus:     badFocus || 'Not set',
       goodCount:    goodFocusHabit ? countFocusTicks(monthGrids, goodFocusHabit.colIndex, today) : 0,
