@@ -136,6 +136,15 @@
       color-scheme: light;
     }
     html, body { background-color: var(--bg-page); }
+    /* Fast repeated taps must not zoom, and a tap must not wait for the
+       browser's double-tap check (~300 ms) before it fires — that wait is
+       what made ticking feel slow. iOS ignores user-scalable=no in the
+       viewport tag, so this is the rule that actually stops double-tap
+       zoom. On html it covers the page (the gaps around the calendar
+       cards included); it is also set on the tappables themselves for the
+       iOS versions that want it on the touched element. Scrolling and
+       pinch gestures are unaffected. */
+    html, button, a, input, label { touch-action: manipulation; }
     body { font-family: var(--font-body); color: var(--text-primary); background-image: var(--page-glow); background-repeat: no-repeat;
            -webkit-font-smoothing: antialiased; overscroll-behavior-y: none;
            padding-top: calc(64px + env(safe-area-inset-top, 0px) + 4px); }
