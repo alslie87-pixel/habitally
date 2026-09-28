@@ -13,30 +13,37 @@ const serialOf = d =>
   Math.round((Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) - Date.UTC(1899, 11, 30)) / DAY_MS);
 const at = (y, m, d) => new Date(y, m, d);
 const addDays = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
-const mondayOnOrBefore = d => addDays(d, -((d.getDay() + 6) % 7));
+const pad2 = n => (n < 10 ? '0' : '') + n;
+const isoOf = d => d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
 
-// Every dated week gets a GH% (column R of its summary row) that names its
-// source: (monthIdx * 5 + weekIdx + 1) / 100, so a response shows which tab
-// and week a percentage was read from.
-const pctOf = (monthIdx, weekIdx) => monthIdx * 5 + weekIdx + 1;
+// ── the sheet's own date rule (read from the real master) ──
+// Week 1 starts on the Monday on or before the 1st — or the Monday AFTER
+// when the 1st is a Friday, Saturday or Sunday:
+//   B2 = DATE(y,m,1) - WEEKDAY(DATE(y,m,1),3) + IF(WEEKDAY(...)>3, 7, 0)
+// Week 5 is used only when its Thursday is still in the month:
+//   B38 = IF(MONTH(B35+4)=m, B35+1, "")
+// Every date is therefore in exactly one tab; the year-sheet for Y covers
+// week1Monday(Y, Jan) .. week1Monday(Y+1, Jan) - 1.
+function week1Monday(year, month) {
+  const first = at(year, month, 1);
+  const wd = (first.getDay() + 6) % 7; // 0 = Monday .. 6 = Sunday
+  return at(year, month, 1 - wd + (wd > 3 ? 7 : 0));
+}
 
-// One month tab built to the sheet's own rule (confirmed 28.09.2026): a week
-// belongs to a month tab only when the whole Mon-Sun week is inside the
-// month, except week 1, which starts on the Monday on or before the 1st. A
-// trailing partial week is the next tab's week 1, and the slot it would have
-// used says "Extra week – Not used" with no dates in column B.
+// One month tab: rows 0..45. Dates in column B of the day rows,
+// weakest/signal markers in T/U of the week rows so a test can see which
+// tab and week a value was read from.
 function buildMonthGrid(year, monthIdx) {
   const grid = [];
   for (let r = 0; r < 46; r++) grid.push([]);
-  let start = mondayOnOrBefore(at(year, monthIdx, 1));
+  let start = week1Monday(year, monthIdx);
   WEEK_START_ROWS.forEach((ws, wi) => {
-    const end = addDays(start, 6);
-    const inside = end.getMonth() === monthIdx && end.getFullYear() === year;
-    if (wi === 0 || inside) {
+    const thursday = addDays(start, 3);
+    const used = wi < 4 || thursday.getMonth() === monthIdx;
+    if (used) {
       for (let d = 0; d < 7; d++) grid[ws + d][1] = serialOf(addDays(start, d));
-      grid[ws][19] = 'weakest-' + monthIdx + '-' + wi;      // T
-      grid[ws][20] = 'signal-' + monthIdx + '-' + wi;       // U
-      grid[ws + 8][17] = pctOf(monthIdx, wi) / 100;         // R
+      grid[ws][19] = 'weakest-' + monthIdx + '-' + wi;  // T
+      grid[ws][20] = 'signal-' + monthIdx + '-' + wi;   // U
     } else {
       grid[ws][0] = 'Extra week – Not used';
     }
@@ -59,6 +66,31 @@ function setTick(grids, y, m0, d0, colIndex) {
     return;
   }
   throw new Error('date in no tab: ' + y + '-' + (m0 + 1) + '-' + d0);
+}
+
+// An "Archive <startyear>" tab, exactly as the sheet's rollover writes it:
+// row 1 names, row 2 types, row 3 statuses, then one row per day the
+// year-sheet covered, the date as text YYYY-MM-DD plus 14 TRUE/FALSE.
+// habits: [{ slot (0-13), name, status? }] · tick(date, slot) -> boolean
+function buildArchive(startYear, habits, tick) {
+  const names = ['Date'], types = ['Type'], statuses = ['Status'];
+  for (let i = 0; i < 14; i++) {
+    names[i + 1] = '';
+    types[i + 1] = i < 7 ? 'bad' : 'good';
+    statuses[i + 1] = '';
+  }
+  (habits || []).forEach(h => {
+    names[h.slot + 1] = h.name;
+    statuses[h.slot + 1] = h.status || 'active';
+  });
+  const rows = [names, types, statuses];
+  const end = addDays(week1Monday(startYear + 1, 0), -1);
+  for (let d = week1Monday(startYear, 0); d <= end; d = addDays(d, 1)) {
+    const row = [isoOf(d)];
+    for (let i = 0; i < 14; i++) row[i + 1] = !!(tick && tick(d, i));
+    rows.push(row);
+  }
+  return rows;
 }
 
 // Control Panel habit slots (values of HABITS_RANGE, F7:H20): one active bad
@@ -122,7 +154,7 @@ function withFakeGoogleapis(fakeGoogle, fn) {
 }
 
 module.exports = {
-  DAY_MS, serialOf, at, addDays, mondayOnOrBefore, pctOf,
-  buildMonthGrid, buildYear, setTick,
+  DAY_MS, serialOf, at, addDays, isoOf, week1Monday,
+  buildMonthGrid, buildYear, setTick, buildArchive,
   makeCpRows, buildFocusGrid, fakeRes, withFakeGoogleapis
 };

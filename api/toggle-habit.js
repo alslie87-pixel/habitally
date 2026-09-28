@@ -2,7 +2,7 @@ const { google } = require('googleapis');
 const { resolveSheetId } = require('./_user');
 const { todayFrom } = require('./_date');
 const { isChecked } = require('./_streak');
-const { sheetYearFrom, yearState, outOfYearMessage } = require('./_year');
+const { sheetYearFrom, sheetEndOfYear, yearState, outOfYearMessage } = require('./_year');
 const V = require('./_validate');
 
 // Flips one habit checkbox for one day. Nothing else.
@@ -49,11 +49,15 @@ module.exports = async (req, res) => {
     });
     const targetGrid = gridRes.data.values || [];
 
-    // A tick on last year's grid builds up data that disappears when the
-    // sheet is rolled over, so refuse it and say why.
-    const year = yearState(sheetYearFrom(targetGrid), today);
+    // A tick on a finished sheet builds up data the customer will not see
+    // again until the rollover archives it, so refuse it and say why. Only
+    // this one tab is at hand, so the sheet's end is derived from its
+    // majority year with the sheet's own week formula (see _year.js): the
+    // 2026 sheet runs through 3 Jan 2027, and 1-3 Jan 2027 still ticks.
+    const gridYear = sheetYearFrom(targetGrid);
+    const year = yearState(gridYear === null ? null : sheetEndOfYear(gridYear), today);
     if (year.outOfYear) {
-      return res.status(409).json({ success: false, error: outOfYearMessage(year.currentYear) });
+      return res.status(409).json({ success: false, error: outOfYearMessage() });
     }
 
     const currentValue = isChecked((targetGrid[row - 1] || [])[col - 1]);

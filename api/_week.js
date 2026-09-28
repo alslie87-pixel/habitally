@@ -1,21 +1,22 @@
 // Which week is "this week", and in which month tab?
 //
-// The sheet puts a week in a month tab only when the whole Monday-Sunday
-// week falls inside that month — except week 1, which starts on the Monday
-// on or before the 1st. A month's trailing partial week therefore lives in
-// the NEXT month's tab: on 28 September the week that contains today is
-// week 1 of the October tab, and the September tab marks its week 5 slot
-// "Extra week – Not used", with no dates.
+// The sheet gives each Monday-Sunday week to the month that holds its
+// THURSDAY (see the formulas in _year.js): a month's trailing partial week
+// lives in the NEXT month's tab — on 28 September the week that contains
+// today is week 1 of the October tab, and the September tab marks its
+// week 5 slot "Extra week – Not used", with no dates. Around new year the
+// live week can even sit in December's week 5 while today is 1-3 January.
 //
-// Picking the week from today's tab alone therefore shows the wrong week at
-// the end of most months, and sends ticks to the wrong rows. The search
+// Picking the week from today's tab alone therefore shows the wrong week
+// at the end of most months, and sends ticks to the wrong rows. The search
 // order here is today's tab, then the next month's tab, then every other
-// tab as a safety net.
+// tab.
 //
-// Late December is the one real gap: the year's last partial week has no
-// next tab to live in. When today is found in no tab, nothing is guessed —
-// the result falls back to the last week of today's tab that started on or
-// before today, and says so with exact: false.
+// Every date the sheet covers is in exactly one tab, and days beyond its
+// coverage are stopped by the year gate first, so the fallback below is a
+// pure safety net: when today is found in no tab, nothing is guessed — the
+// result is the last week of today's tab that started on or before today,
+// and says so with exact: false.
 
 const { serialToDate } = require('./_streak');
 

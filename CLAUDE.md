@@ -17,17 +17,45 @@ Guidance for Claude (and humans) working in this repo.
 | `_user.js` | **read** (Customers sheet) | Resolves `?user=` + `?t=` to the customer's spreadsheet ID. |
 | `_controlPanel.js` | — | The Control Panel layout in one place: habit slots F7:H20 (row decides type: 7-13 bad, 14-20 good; column E is never read or written), the focus cells found by their "Building:"/"Eliminating:" labels (searched in A-D rows 1-60, focus is the cell right of the label; C19/C20 when unlabeled), Z1 marker, and the onboarding rule (Z1 unmarked + zero checkmarks). The app writes only F/G/H 7-20, the two focus cells and Z1 there. |
 | `_date.js` | — | `todayFrom(req)`: the client's `?date=` or server midnight. |
-| `_validate.js` | **read** (Control Panel) | Shared input validation for the write endpoints. |
-| `_streak.js` | — | The streak rule and the focus-habit counter, both year-wide. |
-| `_year.js` | — | Which year the sheet covers; gates the app after new year. |
-| `_trophies.js` | — | Month / season / year trophies for bad habits, calendar-month scoped. |
-| `get-habits.js` | **read** (readonly scope) | One batchGet over all twelve month tabs + the Control Panel; returns habits, config, the year-wide streak and the focus counters. |
+| `_validate.js` | — | Shared input validation for the write endpoints. |
+| `_week.js` | — | Finds the week that contains today, in whichever month tab it lives. |
+| `_streak.js` | — | The streak rule (66%, backwards from yesterday) and the shared sheet-value helpers; the computation itself walks the timeline. |
+| `_year.js` | — | Which dates the sheet covers (its own week formulas); locks the app only when today is past the sheet's last day. |
+| `_timeline.js` | — | The one timeline across years: live tabs + archives merged per calendar date (sheet wins), habits matched on type + name. Streak, focus counters, weekly trend and per-habit aggregates live here. |
+| `_trophies.js` | — | Month / season / year trophies for bad habits, per calendar year over timeline days. |
+| `get-habits.js` | **read** (readonly scope) | One batchGet over the twelve month tabs + Control Panel, plus the archives; returns habits, config, and the timeline-derived streak, trend and focus counters. |
 | `get-coaching.js` | **none** | No sheet access — takes stats from the request body, calls OpenAI (`OPENAI_API_KEY`), returns a coaching note. |
 | `toggle-habit.js` | **write** | Toggles a habit cell for a day. Dashboard C7 belongs to the sheet’s own Apps Script. |
 | `set-onboarded.js` | **write** | Writes the hidden onboarding marker (Control Panel Z1). |
 | `update-focus.js` | **write** | Updates the current focus. |
 | `update-config.js` | **write** | Updates Control Panel configuration. |
-| `_archive.js` | **read** | Reads the hidden "Archive <year>" tabs that the sheet's own Start new year menu (rolloverYear) writes, and counts past years' trophies for the Insights trophy case. The app never starts a new year itself. |
+| `_archive.js` | **read** | Reads the hidden "Archive <startyear>" tabs that the sheet's own Start new year menu (rolloverYear) writes: one metadata call for the tab names, one batchGet for the rows. The app never starts a new year itself. |
+
+### The sheet's date rule and the timeline
+
+- **Week placement (the sheet's own formulas).** Week 1 of a month tab starts on
+  the Monday on or before the 1st — or the Monday AFTER when the 1st is a
+  Friday, Saturday or Sunday (`B2 = DATE(y,m,1) - WEEKDAY(DATE(y,m,1),3) +
+  IF(WEEKDAY(...)>3, 7, 0)`). Week 5 (row 38) is used only when its Thursday is
+  still in the month (`B38 = IF(MONTH(B35+4)=m, B35+1, "")`). In effect a week
+  belongs to the month that holds its Thursday, so **every date lies in exactly
+  one tab**: the 2026 sheet covers 29 Dec 2025 – 3 Jan 2027, the 2027 sheet
+  starts 4 Jan 2027, the 2029 sheet ends 30 Dec 2029.
+- **Year gate.** The app locks only when today is AFTER the sheet's last dated
+  day — never on the calendar new year itself (1–3 Jan 2027 belong to the 2026
+  sheet). The sheet's own *Start new year* menu is allowed only after that last
+  day; it writes every day row into a hidden `Archive <startyear>` tab (dates as
+  text `YYYY-MM-DD` + 14 TRUE/FALSE, spillover days included) before clearing.
+- **One timeline (`_timeline.js`).** All `Archive <year>` tabs plus the live
+  sheet are merged into one day list, one entry per calendar date, the live
+  sheet winning over the archive. Habits match on slot type + trimmed,
+  case-insensitive name (a renamed habit is a new habit); slot position decides
+  the type (1–7 bad, 8–14 good). Streak, focus "X/30", the 4-week trend and
+  signal (raw Mon–Sun ticks, not the sheet's summary rows), momentum's "vs last
+  month", all-time numbers and trophies are all derived from it, so nothing
+  resets at new year. Month trophies, Next to fall and the year heatmap stay
+  calendar-scoped but include archive days that belong to the current month or
+  year (1–3 January).
 
 ### Environment variables (set in Vercel — do not hardcode)
 
