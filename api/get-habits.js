@@ -67,7 +67,7 @@ module.exports = async (req, res) => {
     const lastColLetter = colIndexToLetter(COL_SIGNAL); // U
 
     const ranges = monthNames.map(m => `'${m}'!A1:${lastColLetter}46`);
-    ranges.push(CP.HABITS_RANGE, CP.FOCUS_RANGE);
+    ranges.push(CP.HABITS_RANGE, CP.FOCUS_SEARCH_RANGE);
 
     const batch = await sheets.spreadsheets.values.batchGet({
       spreadsheetId: sheetId,
@@ -95,13 +95,15 @@ module.exports = async (req, res) => {
     const activeGood   = goodHabits.filter(h => h.status === 'active');
 
     // ── 2. FOCUS HABITS ──────────────────────────────────────
-    // C19 (Building) / C20 (Eliminating) hold a habit NAME as free text.
+    // The focus cells are found by their Building:/Eliminating: labels
+    // (see _controlPanel.js) and hold a habit NAME as free text.
     // update-focus only validates it when the app writes it, so a hand-edit
     // or a rename in the sheet can
     // leave a name that matches nothing. That is reported as its own state
     // rather than counted as zero days.
-    const goodFocus = focusData[0] && focusData[0][0] ? String(focusData[0][0]).trim() : '';
-    const badFocus  = focusData[1] && focusData[1][0] ? String(focusData[1][0]).trim() : '';
+    const focus = CP.findFocus(focusData);
+    const goodFocus = focus.good.value;
+    const badFocus  = focus.bad.value;
 
     const findHabit = (list, name) => {
       if (!name) return null;

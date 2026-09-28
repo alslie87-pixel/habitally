@@ -6,11 +6,17 @@
 // Column E is a label for people ("bad habit calendar slot 1 --->") and is
 // never read or written: the type comes from the row alone.
 //
-// Focus habits: C19 = Building (good), C20 = Eliminating (bad).
+// Focus habits: found by their labels, because not every copy of the sheet
+// has them on the same row. "Building:" (good) and "Eliminating:" (bad) sit
+// somewhere in columns A-D of rows 1-60 — B19/B20 in the master, one row
+// further down in some copies — and the focus itself is the cell to the
+// RIGHT of the label. When a label is missing, the master cells C19/C20
+// are assumed.
+//
 // Z1 = the hidden app-onboarded marker.
 //
-// The app writes only F/G/H in rows 7-20, C19:C20 and Z1. The rest of the
-// Control Panel is protected in the sheet.
+// The app writes only F/G/H in rows 7-20, the two focus cells and Z1. The
+// rest of the Control Panel is protected in the sheet.
 
 const TAB = "'⚙️ Control Panel'";
 const FIRST_ROW = 7;
@@ -19,8 +25,10 @@ const SLOTS = PER_TYPE * 2;
 const FIRST_MONTH_COL = 2; // C, 0-based: slot i sits in month-tab column C + i
 
 const HABITS_RANGE = TAB + '!F7:H20';
-const FOCUS_RANGE = TAB + '!C19:C20';                  // [0] = good, [1] = bad
-const FOCUS_CELL = { good: TAB + '!C19', bad: TAB + '!C20' };
+const FOCUS_SEARCH_RANGE = TAB + '!A1:E60'; // labels in A..D, the value one column right
+const FOCUS_LABELS = { good: 'building:', bad: 'eliminating:' };
+const FOCUS_DEFAULT = { good: { row: 19, col: 3 }, bad: { row: 20, col: 3 } }; // C19 / C20
+const FOCUS_LABEL_COLS = 4;                 // labels are searched in A..D only
 const ONBOARDED_CELL = TAB + '!Z1';
 const ONBOARDED_MARK = 'app-onboarded';
 
@@ -57,6 +65,34 @@ function readSlots(values) {
 const isHabit = s => !!s.name && s.status !== 'empty';
 const isFree = s => !isHabit(s);
 
+// Values of FOCUS_SEARCH_RANGE -> where each focus lives and what it holds:
+//   { good: { cell, value, found }, bad: { ... } }
+// cell is the A1 range update-focus writes to, value the habit name ('' when
+// empty), found false when the label was not seen and C19/C20 is assumed.
+function findFocus(values) {
+  const rows = values || [];
+  const out = {};
+  Object.keys(FOCUS_LABELS).forEach(type => {
+    const label = FOCUS_LABELS[type];
+    let pos = null;
+    for (let r = 0; r < rows.length && !pos; r++) {
+      const row = rows[r] || [];
+      for (let c = 0; c < FOCUS_LABEL_COLS; c++) {
+        if (text(row[c]).toLowerCase() === label) { pos = { row: r + 1, col: c + 2 }; break; }
+      }
+    }
+    const found = !!pos;
+    if (!pos) pos = FOCUS_DEFAULT[type];
+    const valueRow = rows[pos.row - 1] || [];
+    out[type] = {
+      found,
+      cell: TAB + '!' + String.fromCharCode(64 + pos.col) + pos.row,
+      value: text(valueRow[pos.col - 1])
+    };
+  });
+  return out;
+}
+
 // Any checkmark in the day rows (C..P) of any month tab.
 function hasAnyTick(monthGrids) {
   for (const grid of monthGrids || []) {
@@ -80,6 +116,6 @@ const inOnboarding = (marker, monthGrids) => !isOnboarded(marker) && !hasAnyTick
 
 module.exports = {
   TAB, PER_TYPE, SLOTS,
-  HABITS_RANGE, FOCUS_RANGE, FOCUS_CELL, ONBOARDED_CELL, ONBOARDED_MARK,
-  rowRange, readSlots, isHabit, isFree, hasAnyTick, isOnboarded, inOnboarding
+  HABITS_RANGE, FOCUS_SEARCH_RANGE, ONBOARDED_CELL, ONBOARDED_MARK,
+  rowRange, readSlots, isHabit, isFree, findFocus, hasAnyTick, isOnboarded, inOnboarding
 };

@@ -1,76 +1,20 @@
 // Week selection across month tabs (fix/week-across-months).
 //
-// Everything runs against a FAKE year-2026 sheet built in memory to the same
-// rule as the real one (confirmed 28.09.2026): a week belongs to a month tab
-// only when the whole Mon-Sun week is inside the month, except week 1, which
-// starts on the Monday on or before the 1st. A trailing partial week is the
-// next tab's week 1, and the slot it would have used says
-// "Extra week – Not used" with no dates in column B.
+// Everything runs against the fake year-2026 sheet from helpers.js, built to
+// the same rule as the real one. No Google API is touched: googleapis is
+// replaced with a fake for the endpoint tests, and a write attempt fails
+// the test.
 //
-// No Google API is touched: googleapis is replaced with a fake for the
-// endpoint tests, and a write attempt fails the test.
-//
-// Run with: node --test test/
+// Run with: npm test
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const Module = require('module');
 
-const { findCurrentWeek, weekIndexIn, WEEK_START_ROWS } = require('../api/_week');
+const { findCurrentWeek, WEEK_START_ROWS } = require('../api/_week');
 const { serialToDate } = require('../api/_streak');
 const V = require('../api/_validate');
-
-// ── fake sheet ─────────────────────────────────────────────
-
-const DAY_MS = 86400000;
-const serialOf = d =>
-  Math.round((Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) - Date.UTC(1899, 11, 30)) / DAY_MS);
-const at = (y, m, d) => new Date(y, m, d);
-const addDays = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
-const mondayOnOrBefore = d => addDays(d, -((d.getDay() + 6) % 7));
-
-// Every dated week gets a GH% (column R of its summary row) that names its
-// source: (monthIdx * 5 + weekIdx + 1) / 100, so the response shows which
-// tab and week a percentage was read from.
-const pctOf = (monthIdx, weekIdx) => monthIdx * 5 + weekIdx + 1;
-
-// One month tab: rows 0..45. Dates in column B of the day rows,
-// weakest/signal in T/U of the week rows, GH% in R of the summary rows.
-function buildMonthGrid(year, monthIdx) {
-  const grid = [];
-  for (let r = 0; r < 46; r++) grid.push([]);
-  let start = mondayOnOrBefore(at(year, monthIdx, 1));
-  WEEK_START_ROWS.forEach((ws, wi) => {
-    const end = addDays(start, 6);
-    const inside = end.getMonth() === monthIdx && end.getFullYear() === year;
-    if (wi === 0 || inside) {
-      for (let d = 0; d < 7; d++) grid[ws + d][1] = serialOf(addDays(start, d));
-      grid[ws][19] = 'weakest-' + monthIdx + '-' + wi;      // T
-      grid[ws][20] = 'signal-' + monthIdx + '-' + wi;       // U
-      grid[ws + 8][17] = pctOf(monthIdx, wi) / 100;         // R
-    } else {
-      grid[ws][0] = 'Extra week – Not used';
-    }
-    start = addDays(start, 7);
-  });
-  return grid;
-}
-
-const buildYear = year => Array.from({ length: 12 }, (_, m) => buildMonthGrid(year, m));
-
-// Ticks the habit column for one date, in the tab that owns that date.
-function setTick(grids, y, m0, d0, colIndex) {
-  const date = at(y, m0, d0);
-  for (let m = 0; m < 12; m++) {
-    const wi = weekIndexIn(grids[m], date);
-    if (wi === -1) continue;
-    const start = serialToDate(grids[m][WEEK_START_ROWS[wi]][1]);
-    const off = Math.round((date - start) / DAY_MS);
-    grids[m][WEEK_START_ROWS[wi] + off][colIndex] = true;
-    return;
-  }
-  throw new Error('date in no tab: ' + y + '-' + (m0 + 1) + '-' + d0);
-}
+const { at, addDays, pctOf, buildMonthGrid, buildYear, setTick,
+        makeCpRows, buildFocusGrid, fakeRes, withFakeGoogleapis } = require('./helpers');
 
 // ── the fake sheet matches what was confirmed in the real one ──
 
@@ -131,15 +75,8 @@ CASES.forEach(([label, today, monthIdx, weekIdx, weekStart, exact]) => {
 // Control Panel ranges, by position) and refuses everything else.
 const state = { grids: null };
 
-const CP_ROWS = (() => {
-  const rows = [];
-  for (let i = 0; i < 14; i++) rows.push([]);
-  rows[0] = ['No sugar', 'Active', ''];   // bad, month-tab colIndex 2
-  rows[7] = ['Exercise', 'Active', ''];   // good, colIndex 9
-  rows[8] = ['Read', 'Active', ''];       // good, colIndex 10
-  return rows;
-})();
-const FOCUS_ROWS = [['Exercise'], ['No sugar']];
+const CP_ROWS = makeCpRows();
+const FOCUS_GRID = buildFocusGrid(); // master layout: labels in B19/B20
 
 const fakeGoogle = {
   auth: { GoogleAuth: class { constructor() {} } },
@@ -149,7 +86,7 @@ const fakeGoogle = {
         batchGet: async ({ ranges }) => {
           assert.equal(ranges.length, 14, 'expected 12 month tabs + 2 CP ranges');
           const vr = state.grids.map(g => ({ values: g }));
-          vr.push({ values: CP_ROWS }, { values: FOCUS_ROWS });
+          vr.push({ values: CP_ROWS }, { values: FOCUS_GRID });
           return { data: { valueRanges: vr } };
         },
         get: async () => { throw new Error('unexpected values.get in test'); },
@@ -159,15 +96,9 @@ const fakeGoogle = {
   })
 };
 
-// get-habits requires googleapis while this interception is active, so the
+// get-habits requires googleapis while the interception is active, so the
 // endpoint under test can never reach the real API.
-const origLoad = Module._load;
-Module._load = function (request) {
-  if (request === 'googleapis') return { google: fakeGoogle };
-  return origLoad.apply(this, arguments);
-};
-const getHabits = require('../api/get-habits');
-Module._load = origLoad;
+const getHabits = withFakeGoogleapis(fakeGoogle, () => require('../api/get-habits'));
 
 process.env.GOOGLE_SERVICE_ACCOUNT = '{"type":"service_account"}';
 process.env.GOOGLE_SHEET_ID = 'fake-sheet-for-tests';
@@ -175,13 +106,7 @@ delete process.env.CUSTOMERS_SHEET_ID; // single-user mode: no Customers lookup
 
 async function callGetHabits(grids, dateStr) {
   state.grids = grids;
-  const res = {
-    headers: {}, statusCode: 0, body: null,
-    setHeader(k, v) { this.headers[k] = v; },
-    status(c) { this.statusCode = c; return this; },
-    json(o) { this.body = o; return this; },
-    end() { return this; }
-  };
+  const res = fakeRes();
   await getHabits({ method: 'GET', query: { date: dateStr } }, res);
   assert.equal(res.statusCode, 200);
   assert.ok(!res.body.error, 'error: ' + res.body.error);

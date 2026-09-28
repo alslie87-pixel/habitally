@@ -7,7 +7,9 @@ const crypto = require('crypto');
 // CUSTOMERS_SHEET_ID set      -> ?user=<name> AND ?t=<token> are required.
 //                                <name> must match column A (case-insensitive)
 //                                in the Customers sheet and <token> must match
-//                                column F ("Token") on that same row. The sheet
+//                                column F ("Token") on that same row; the first
+//                                row where BOTH match wins, so two customers
+//                                can share a first name. The sheet
 //                                URL in that row is used. Missing user, missing
 //                                token, unknown user or token mismatch -> null.
 //                                Callers must answer 404 {error:"unknown user"}.
@@ -59,12 +61,14 @@ async function resolveSheetId(req) {
   for (const row of rows) {
     const name = (row[0] || '').toString().trim().toLowerCase();
     if (name !== user) continue;
-    if (!tokenMatches(row[TOKEN_COL], token)) return null;
+    // a name hit with someone else's token is another customer with the
+    // same first name — keep looking for the row this token belongs to
+    if (!tokenMatches(row[TOKEN_COL], token)) continue;
     for (const cell of row) {
       const m = /\/d\/([a-zA-Z0-9-_]+)/.exec((cell || '').toString());
       if (m) { cache.set(key, { id: m[1], t: Date.now() }); return m[1]; }
     }
-    return null;
+    return null; // the token's own row has no sheet URL: a data error
   }
   return null;
 }
