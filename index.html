@@ -1126,6 +1126,7 @@
       var sheetName = chip.dataset.sheet;
       var row = parseInt(chip.dataset.row);
       var col = parseInt(chip.dataset.col);
+      if (!col) return; // an optimistic habit: no sheet column yet, inert until the refresh
       var currentValue = chip.dataset.checked === 'true';
       var newValue = !currentValue;
       paintChip(chip, newValue);
@@ -1400,6 +1401,39 @@
       });
     });
 
+    // ── OPTIMISTIC HABIT EDITS ────────────────────────────
+    // update-config takes seconds: it writes the Control Panel and then
+    // syncs the hover note onto all twelve month-tab headers before it
+    // answers. So the list is patched locally first and the modal closes
+    // at once; the write runs behind it, a silent refresh then brings the
+    // real slot data, and a rejected write rolls the patch back and shows
+    // the server's message.
+    //
+    // A patched-in habit has no sheet column yet (col 0), so its calendar
+    // chips are inert until the refresh fills them in. A renamed habit
+    // starts unchecked in a fresh column, so its chips reset the same way.
+    function patchHabits(action, type, name, newName) {
+      if (!appData || !appData.week) return null;
+      var snapshot = JSON.stringify(appData.week); // plain data: safe to snapshot for rollback
+      appData.week.forEach(function (day) {
+        if (action === 'add') {
+          day[type].push({ name: newName, checked: false, col: 0 });
+        } else if (action === 'replace') {
+          day[type].forEach(function (h) {
+            if (h.name === name) { h.name = newName; h.checked = false; h.col = 0; }
+          });
+        } else if (action === 'remove') {
+          day[type] = day[type].filter(function (h) { return h.name !== name; });
+        }
+      });
+      return snapshot;
+    }
+
+    function repaintHabits() {
+      renderCalendar(appData);
+      if (habitsOpen) renderHabits();
+    }
+
     async function confirmAction(action) {
       var type    = manageTarget.type;
       var name    = manageTarget.name;
@@ -1407,24 +1441,31 @@
       var newName = input.value.trim();
       if (action === 'replace' && !name) action = 'add';
       if ((action === 'add' || action === 'replace') && !newName) { input.focus(); return; }
-      var btn = document.getElementById(action === 'remove' ? 'confirm-remove-btn' : 'confirm-replace-btn');
-      var label = btn.textContent;
-      btn.textContent = 'Saving…';
-      btn.disabled = true;
+      var snapshot = patchHabits(action, type, name, newName);
+      closeConfirmModal();
+      if (snapshot) repaintHabits();
+      var undo = function () {
+        if (snapshot && appData) { appData.week = JSON.parse(snapshot); repaintHabits(); }
+      };
       try {
         var r = await postJson('/api/update-config', { action, type, name, newName: newName || undefined });
         if (r.res.ok && r.data && r.data.success) {
-          closeConfirmModal();
-          loadApp();   // repaints Home and, while it is open, the Habits screen
+          // Fetch the real slot data without moving the user. refreshAll
+          // declines while a tick is still saving or a refresh is running;
+          // then try once more shortly, and the regular background refresh
+          // covers the rest.
+          if (!(await HT.refreshAll('habit-edit'))) {
+            setTimeout(function () { HT.refreshAll('habit-edit'); }, 2000);
+          }
         } else {
+          undo();
           // a 400 here is a habit-minimum or slot message, written for the user
           alert(friendlyError('update-config', r.res, r.data, null));
         }
       } catch (err) {
+        undo();
         alert(friendlyError('update-config', null, null, err));
       }
-      btn.textContent = label;
-      btn.disabled = false;
     }
 
     // ── PULL TO CLOSE SHEETS ──────────────────────────────
