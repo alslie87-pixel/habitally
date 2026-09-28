@@ -4,6 +4,9 @@
   "engines": {
     "node": "24.x"
   },
+  "scripts": {
+    "test": "node --test"
+  },
   "dependencies": {
     "googleapis": "^118.0.0"
   }
