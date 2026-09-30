@@ -1129,34 +1129,103 @@
       chip.querySelector('.chip-icon').textContent = on ? '\u2713' : (type === 'bad' ? '\u2717' : '\u25CB');
     }
 
-    // ── HABIT TAP ─────────────────────────────────────────
-    async function handleHabitTap(e) {
+    // ── HABIT TAP → OUTBOX ────────────────────────────────
+    // A tap paints at once and queues the DESIRED cell value in an outbox.
+    // The outbox flushes as ONE /api/sync-habits call a few seconds after
+    // the first queued tap, so spamming chips costs one Sheets write
+    // instead of one read + one write per tap — which is what tripped
+    // Google's per-minute quota (an error alert) and raced flips against
+    // each other. Values are absolute, so a repeated flush cannot
+    // double-flip, and the last tap per cell wins.
+    //
+    // While anything is queued or in flight, HT.pendingWrites keeps the
+    // background refresh from overwriting unsaved ticks. A failed flush
+    // keeps its ticks queued and retries quietly; the user is only told
+    // after three failures in a row, and the ticks stay queued after that
+    // too.
+    var FLUSH_MS = 3000;
+    var RETRY_MS = 5000;
+    var outbox = new Map();      // "sheet|row|col" -> { sheetName, row, col, value }
+    var flushTimer = null;
+    var flushInFlight = 0;
+    var syncFails = 0;
+
+    function updatePendingWrites() { HT.pendingWrites = outbox.size + flushInFlight; }
+
+    function handleHabitTap(e) {
       var chip = e.currentTarget;
-      var sheetName = chip.dataset.sheet;
-      var row = parseInt(chip.dataset.row);
       var col = parseInt(chip.dataset.col);
-      var currentValue = chip.dataset.checked === 'true';
-      var newValue = !currentValue;
+      if (!col) return; // a habit with no sheet column yet (optimistic add) stays inert
+      var newValue = !(chip.dataset.checked === 'true');
       paintChip(chip, newValue);
-      HT.pendingWrites++;
-      try {
-        var r = await postJson('/api/toggle-habit', { sheetName, row, col });
-        if (!r.res.ok || !r.data || !r.data.success) {
-          paintChip(chip, currentValue);
-          alert(friendlyError('toggle-habit', r.res, r.data, null));
-          loadApp(); // repaint the chip from the sheet, not from the failed guess
-        }
-        // the server flips whatever is in the sheet; if that differs from our optimistic
-        // guess (another device toggled first), reload so the card shows the truth
-        else if (typeof r.data.newValue === 'boolean' && r.data.newValue !== newValue) { loadApp(); }
-      } catch (err) {
-        paintChip(chip, currentValue);
-        alert(friendlyError('toggle-habit', null, null, err));
-        loadApp();
-      } finally {
-        HT.pendingWrites--;
-      }
+      var change = {
+        sheetName: chip.dataset.sheet,
+        row: parseInt(chip.dataset.row),
+        col: col,
+        value: newValue
+      };
+      outbox.set(change.sheetName + '|' + change.row + '|' + change.col, change);
+      updatePendingWrites();
+      if (!flushTimer) flushTimer = setTimeout(flushTicks, FLUSH_MS);
     }
+
+    async function flushTicks() {
+      flushTimer = null;
+      if (!outbox.size || flushInFlight) return; // a running flush reschedules when it ends
+      var batch = Array.from(outbox.values());
+      outbox.clear();
+      flushInFlight = batch.length;
+      updatePendingWrites();
+
+      var r = null, caught = null;
+      try { r = await postJson('/api/sync-habits', { changes: batch }); }
+      catch (err) { caught = err; }
+      flushInFlight = 0;
+
+      // the sheet's year ended mid-session: these ticks have no home any
+      // more, so drop them and let loadApp show the year message
+      if (r && r.res && r.res.status === 409) {
+        updatePendingWrites();
+        loadApp();
+        return;
+      }
+
+      var ok = !!(r && r.res.ok && r.data && r.data.success);
+      if (ok) {
+        syncFails = 0;
+      } else {
+        // keep the ticks queued for the retry; a newer tap on the same cell wins
+        batch.forEach(function (c) {
+          var key = c.sheetName + '|' + c.row + '|' + c.col;
+          if (!outbox.has(key)) outbox.set(key, c);
+        });
+        syncFails++;
+        if (syncFails === 3) alert(friendlyError('sync-habits', r && r.res, r && r.data, caught));
+      }
+      updatePendingWrites();
+      if (outbox.size && !flushTimer) flushTimer = setTimeout(flushTicks, ok ? FLUSH_MS : RETRY_MS);
+    }
+
+    // When the app goes to the background the queue is pushed out right
+    // away with keepalive, so the request outlives the page if it is being
+    // closed. The queue is NOT cleared: sets are idempotent, so if the page
+    // comes back the normal flush re-sends the same values harmlessly, and
+    // pendingWrites keeps guarding until it does.
+    function flushOnHide() {
+      if (!outbox.size || flushInFlight) return;
+      try {
+        fetch(api('/api/sync-habits'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ changes: Array.from(outbox.values()) }),
+          keepalive: true
+        });
+      } catch (e) { /* best effort */ }
+    }
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'hidden') flushOnHide();
+    });
+    window.addEventListener('pagehide', flushOnHide);
 
     // ── SHEETS ────────────────────────────────────────────
     // Bottom sheets (focus picker, edit habit, add habit) share one open and

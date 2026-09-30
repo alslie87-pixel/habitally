@@ -25,7 +25,8 @@ Guidance for Claude (and humans) working in this repo.
 | `_trophies.js` | — | Month / season / year trophies for bad habits, per calendar year over timeline days. |
 | `get-habits.js` | **read** (readonly scope) | One batchGet over the twelve month tabs + Control Panel, plus the archives; returns habits, config, and the timeline-derived streak, trend and focus counters. |
 | `get-coaching.js` | **none** | No sheet access — takes stats from the request body, calls OpenAI (`OPENAI_API_KEY`), returns a coaching note. |
-| `toggle-habit.js` | **write** | Toggles a habit cell for a day. Dashboard C7 belongs to the sheet’s own Apps Script. |
+| `toggle-habit.js` | **write** | Toggles a habit cell for a day. No longer called by the app (see `sync-habits`), kept for clients still running the old page. Dashboard C7 belongs to the sheet’s own Apps Script. |
+| `sync-habits.js` | **write** | Applies a batch of habit ticks in one `batchUpdate`. The app queues taps in an outbox and flushes every few seconds (and on app hide), so spamming costs one Sheets write, not one read + one write per tap. Changes carry the desired value (set, not flip), so a repeated flush cannot double-flip. Same cell validation and year gate as `toggle-habit`. |
 | `set-onboarded.js` | **write** | Writes the hidden onboarding marker (Control Panel Z1). |
 | `update-focus.js` | **write** | Updates the current focus. |
 | `update-config.js` | **write** | Updates Control Panel configuration. |
