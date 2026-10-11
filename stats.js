@@ -318,11 +318,18 @@
     const yr = now.getFullYear();
     const cw = 500;
 
-    let MV = S.months.slice(0, curM + 1).map(m => Math.round((m.good || 0) * 100));
-    if (!MV.length) MV = [0];
+    // The Momentum curve: each month of the year from the timeline
+    // (S.monthGood). A month with under a week of data is null and left out,
+    // so in a month's first week the curve ends on the month before.
+    const curve = (S.monthGood || []).map((v, m) => ({ m, v })).filter(p => p.v != null);
+    const MV = curve.map(p => p.v);
     const single = MV.length === 1;
-    if (UI.mi === null || UI.mi >= MV.length) UI.mi = MV.length - 1;
-    const mi = UI.mi;
+    // until a month is tapped the latest point is the selected one
+    const mi = (UI.mi === null || UI.mi >= MV.length) ? MV.length - 1 : UI.mi;
+
+    // the last 30 days up to yesterday against the 30 before (get-stats)
+    const roll = S.rolling || {};
+    const rDays = roll.days || 30;
 
     // now / delta are the last 30 days against the 30 before; null while a
     // window is too thin (a new user), and then nothing is shown for them
@@ -338,15 +345,13 @@
 
     const dayMap = {};
     (S.daily || []).forEach(d => { dayMap[d.t] = d.p; });
-    const dailyVals = (S.daily || []).map(d => d.p * 100);
-    const score = dailyVals.length ? Math.round(dailyVals.reduce((a,b)=>a+b,0) / dailyVals.length) : 0;
-    let wkS = 0, wkN = 0, weS = 0, weN = 0;
-    (S.daily || []).forEach(d => {
-      const wd = (new Date(d.t + 'T00:00:00').getDay() + 6) % 7;
-      if (wd >= 5) { weS += d.p * 100; weN++; } else { wkS += d.p * 100; wkN++; }
-    });
-    const wkday = wkN ? Math.round(wkS / wkN) : 0;
-    const wkend = weN ? Math.round(weS / weN) : 0;
+    // Consistency, its weekday/weekend bars and the AVG lines of Power days
+    // and Where habits break: the mean daily good-% of the last 30 days, the
+    // same days the bars and lines are drawn from. null (under a week of
+    // data) shows as "–". The year heatmap keeps S.daily, the whole year.
+    const score = roll.good;
+    const wkday = S.weekdayAvg, wkend = S.weekendAvg;
+    const wkGap = (wkday == null || wkend == null) ? null : wkday - wkend;
 
     const pd = (S.weekday || []).map(v => v == null ? 0 : v);
     while (pd.length < 7) pd.push(0);
@@ -364,33 +369,25 @@
 
     /* momentum */
     const mh = 152, top = 16, base = 120;
-    let dmin = Math.min.apply(null, MV) - 16, dmax = Math.max.apply(null, MV) + 10;
-    if (dmax - dmin < 12) { dmax += 6; dmin -= 6; }
-    const yOf = x => top + (1 - (x - dmin) / (dmax - dmin)) * (base - top);
-    const n = MV.length, step = cw / n, padX = step / 2;
-    const pts = MV.map((m, i) => ({ x: padX + i * step, y: yOf(m) }));
-    let momPath;
-    if (single) {
-      momPath = 'M 0 ' + pts[0].y.toFixed(1) + ' L ' + cw + ' ' + pts[0].y.toFixed(1);
-    } else {
-      const line = smooth(pts);
-      momPath = 'M 0 ' + pts[0].y.toFixed(1) + ' L ' + line.slice(2) + ' L ' + cw + ' ' + pts[n-1].y.toFixed(1);
-    }
-    const momArea = momPath + ' L ' + cw + ' ' + base + ' L 0 ' + base + ' Z';
-    // The running month's point shows the last 30 days against the 30
-    // before (S.rolling), so the 1st of a month does not start from zero; a
-    // tapped earlier month shows that month against the one before it.
-    const roll = S.rolling || {};
-    const rDays = roll.days || 30;
-    const live = mi === MV.length - 1;
-    const hNum = live ? roll.good : MV[mi];
-    const dl = !live ? (mi === 0 ? 0 : MV[mi] - MV[mi - 1])
-      : (roll.good != null && roll.prevGood != null ? roll.good - roll.prevGood : null);
-    const hSub = live ? 'Last ' + rDays + ' days vs previous ' + rDays
-      : mi === 0 ? MONF[0] + ' · first month tracked'
-      : MONF[mi] + ' vs ' + MONF[mi - 1];
-
-    const momSvg = `
+    const gridLines = [0.34,0.67,1].map(t => `<line x1="0" y1="${(top + t*(base-top)).toFixed(1)}" x2="${cw}" y2="${(top + t*(base-top)).toFixed(1)}" stroke="var(--hxLine)"/>`).join('');
+    // no month to draw yet (the year's first week, a new user): grid only
+    let momSvg = `<svg width="100%" height="152" viewBox="0 0 ${cw} ${mh}" preserveAspectRatio="none" style="display:block">${gridLines}</svg>`;
+    let momLabels = '';
+    if (MV.length) {
+      let dmin = Math.min.apply(null, MV) - 16, dmax = Math.max.apply(null, MV) + 10;
+      if (dmax - dmin < 12) { dmax += 6; dmin -= 6; }
+      const yOf = x => top + (1 - (x - dmin) / (dmax - dmin)) * (base - top);
+      const n = MV.length, step = cw / n, padX = step / 2;
+      const pts = MV.map((m, i) => ({ x: padX + i * step, y: yOf(m) }));
+      let momPath;
+      if (single) {
+        momPath = 'M 0 ' + pts[0].y.toFixed(1) + ' L ' + cw + ' ' + pts[0].y.toFixed(1);
+      } else {
+        const line = smooth(pts);
+        momPath = 'M 0 ' + pts[0].y.toFixed(1) + ' L ' + line.slice(2) + ' L ' + cw + ' ' + pts[n-1].y.toFixed(1);
+      }
+      const momArea = momPath + ' L ' + cw + ' ' + base + ' L 0 ' + base + ' Z';
+      momSvg = `
       <svg width="100%" height="152" viewBox="0 0 ${cw} ${mh}" preserveAspectRatio="none" style="display:block">
       <defs>
         <linearGradient id="hsFill" x1="0" y1="0" x2="0" y2="1">
@@ -398,7 +395,7 @@
         </linearGradient>
         <linearGradient id="hsLine" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="${P.acc}"/><stop offset="1" stop-color="${P.accT}"/></linearGradient>
       </defs>
-      ${[0.34,0.67,1].map(t => `<line x1="0" y1="${(top + t*(base-top)).toFixed(1)}" x2="${cw}" y2="${(top + t*(base-top)).toFixed(1)}" stroke="var(--hxLine)"/>`).join('')}
+      ${gridLines}
       <path d="${momArea}" fill="url(#hsFill)"/>
       <path d="${momPath}" fill="none" stroke="url(#hsLine)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
       <line x1="${pts[mi].x.toFixed(1)}" y1="${pts[mi].y.toFixed(1)}" x2="${pts[mi].x.toFixed(1)}" y2="${base}" stroke="${al(P.accT, 0.3)}" stroke-dasharray="2 3"/>
@@ -408,9 +405,20 @@
         <div style="position:absolute;left:-12px;top:-12px;width:24px;height:24px;border-radius:999px;background:${al(P.accT, 0.16)};animation:haloPulse 2.8s ease-in-out infinite"></div>
         <div style="position:absolute;left:-6.6px;top:-6.6px;width:13.2px;height:13.2px;box-sizing:border-box;border-radius:999px;background:var(--bg-page);border:2.4px solid ${P.accT}"></div>
       </div>`;
-    const momLabels = `<div style="display:flex;margin-top:8px">
-        ${MV.map((m,i)=>`<div style="flex:1 1 0;text-align:center;font:600 10.5px Manrope;color:${i===mi?P.accT:'var(--text-muted)'}">${MON[i]}</div>`).join('')}
+      momLabels = `<div style="display:flex;margin-top:8px">
+        ${curve.map((p,i)=>`<div style="flex:1 1 0;text-align:center;font:600 10.5px Manrope;color:${i===mi?P.accT:'var(--text-muted)'}">${MON[p.m]}</div>`).join('')}
       </div>`;
+    }
+    // The latest point shows the last 30 days against the 30 before
+    // (S.rolling), so the 1st of a month does not start from zero; a tapped
+    // earlier month shows that month against the one before it.
+    const live = mi === MV.length - 1;
+    const hNum = live ? roll.good : MV[mi];
+    const dl = !live ? (mi === 0 ? 0 : MV[mi] - MV[mi - 1])
+      : (roll.good != null && roll.prevGood != null ? roll.good - roll.prevGood : null);
+    const hSub = live ? 'Last ' + rDays + ' days vs previous ' + rDays
+      : mi === 0 ? MONF[curve[0].m] + ' · first month tracked'
+      : MONF[curve[mi].m] + ' vs ' + MONF[curve[mi - 1].m];
 
     /* habit momentum */
     const sw = cw;
@@ -449,7 +457,7 @@
 
     /* consistency arc */
     const A0 = 132, SWP = 276, R = 56, CX = 73, CY = 62;
-    const tip = pol(CX, CY, R, A0 + SWP * Math.min(100, score) / 100);
+    const tip = score == null ? null : pol(CX, CY, R, A0 + SWP * Math.min(100, score) / 100);
 
     /* power days */
     const sel = UI.pd == null ? bestD : UI.pd;
@@ -525,7 +533,7 @@
 
     const monthsIn = curM + 1;
     const scrollY = panel.scrollTop;
-    const avgX = tX + tW * score / 100;
+    const avgX = score == null ? null : tX + tW * score / 100;
 
     panel.innerHTML = `
     <div class="hsx-page">
@@ -566,24 +574,24 @@
             <svg width="146" height="132" viewBox="0 0 146 132" style="display:block;overflow:visible">
               <defs><linearGradient id="hsArc" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="${P.acc}"/><stop offset="1" stop-color="${P.accT}"/></linearGradient></defs>
               <path d="${arcPath(CX, CY, R, A0, A0 + SWP)}" fill="none" stroke="var(--track)" stroke-width="10" stroke-linecap="round"/>
-              <path d="${arcPath(CX, CY, R, A0, A0 + SWP * Math.min(100, score) / 100)}" fill="none" stroke="url(#hsArc)" stroke-width="10" stroke-linecap="round"/>
-              <circle cx="${tip.x.toFixed(2)}" cy="${tip.y.toFixed(2)}" r="3.4" fill="#FFFFFF"/>
+              ${tip ? `<path d="${arcPath(CX, CY, R, A0, A0 + SWP * Math.min(100, score) / 100)}" fill="none" stroke="url(#hsArc)" stroke-width="10" stroke-linecap="round"/>
+              <circle cx="${tip.x.toFixed(2)}" cy="${tip.y.toFixed(2)}" r="3.4" fill="#FFFFFF"/>` : ''}
             </svg>
             <div style="position:absolute;left:0;top:0;width:146px;height:124px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;pointer-events:none">
-              <div style="font:800 34px/1 Manrope;letter-spacing:-0.04em;color:var(--text-primary)">${score}</div>
+              <div style="font:800 34px/1 Manrope;letter-spacing:-0.04em;color:var(--text-primary)">${score == null ? '–' : score}</div>
               <div style="font:700 9.5px/1 Manrope;letter-spacing:0.16em;color:var(--text-muted)">ON PLAN</div>
             </div>
           </div>
           <div style="display:flex;flex-direction:column;gap:14px;flex:1 1 150px;min-width:0">
             <div style="display:flex;flex-direction:column;gap:7px">
-              <div style="display:flex;align-items:baseline;justify-content:space-between"><div style="font:600 12.5px Manrope;color:var(--text-secondary)">Weekdays</div><div style="font:800 15px Manrope;color:var(--text-primary)">${wkday}%</div></div>
-              <div style="height:6px;border-radius:999px;background:var(--track);overflow:hidden"><div style="width:${wkday}%;height:100%;border-radius:999px;background:${P.good}"></div></div>
+              <div style="display:flex;align-items:baseline;justify-content:space-between"><div style="font:600 12.5px Manrope;color:var(--text-secondary)">Weekdays</div><div style="font:800 15px Manrope;color:var(--text-primary)">${wkday == null ? '–' : wkday + '%'}</div></div>
+              <div style="height:6px;border-radius:999px;background:var(--track);overflow:hidden"><div style="width:${wkday || 0}%;height:100%;border-radius:999px;background:${P.good}"></div></div>
             </div>
             <div style="display:flex;flex-direction:column;gap:7px">
-              <div style="display:flex;align-items:baseline;justify-content:space-between"><div style="font:600 12.5px Manrope;color:var(--text-secondary)">Weekends</div><div style="font:800 15px Manrope;color:var(--text-primary)">${wkend}%</div></div>
-              <div style="height:6px;border-radius:999px;background:var(--track);overflow:hidden"><div style="width:${wkend}%;height:100%;border-radius:999px;background:${P.bad}"></div></div>
+              <div style="display:flex;align-items:baseline;justify-content:space-between"><div style="font:600 12.5px Manrope;color:var(--text-secondary)">Weekends</div><div style="font:800 15px Manrope;color:var(--text-primary)">${wkend == null ? '–' : wkend + '%'}</div></div>
+              <div style="height:6px;border-radius:999px;background:var(--track);overflow:hidden"><div style="width:${wkend || 0}%;height:100%;border-radius:999px;background:${P.bad}"></div></div>
             </div>
-            <div style="font:600 12px/1.4 Manrope;color:${wkday - wkend > 0 ? P.bad : P.up};white-space:nowrap">${wkday - wkend > 0 ? 'Weekend dip · ' + (wkday - wkend) + ' pts' : 'Weekend lift · ' + (wkend - wkday) + ' pts'}</div>
+            <div style="font:600 12px/1.4 Manrope;color:${wkGap == null ? 'var(--text-muted)' : wkGap > 0 ? P.bad : P.up};white-space:nowrap">${wkGap == null ? '–' : wkGap > 0 ? 'Weekend dip · ' + wkGap + ' pts' : 'Weekend lift · ' + Math.abs(wkGap) + ' pts'}</div>
           </div>
         </div>
       </div>
@@ -593,11 +601,11 @@
           <div style="padding:5px 10px;border-radius:999px;background:${sel === bestD ? al(P.gold, 0.13) : al(P.acc, 0.13)};font:700 11.5px Manrope;color:${sel === bestD ? P.gold : P.accT}">${UI.pd == null ? 'Best · ' : ''}${WD[sel]} ${pd[sel]}%</div>
         </div>
         <div style="position:relative;height:13px;margin-top:16px">
-          <div style="position:absolute;left:${(avgX / cw * 100).toFixed(1)}%;top:0;transform:translateX(-50%);font:700 9px/1 Manrope;letter-spacing:0.14em;color:var(--text-muted);white-space:nowrap">AVG ${score}</div>
+          ${avgX == null ? '' : `<div style="position:absolute;left:${(avgX / cw * 100).toFixed(1)}%;top:0;transform:translateX(-50%);font:700 9px/1 Manrope;letter-spacing:0.14em;color:var(--text-muted);white-space:nowrap">AVG ${score}</div>`}
         </div>
         <div style="position:relative">
           <svg width="100%" height="${pdH}" viewBox="0 0 ${cw} ${pdH}" preserveAspectRatio="none" style="display:block">
-            <line x1="${avgX.toFixed(1)}" y1="0" x2="${avgX.toFixed(1)}" y2="${pdH}" stroke="var(--hxAvg)" stroke-dasharray="2 4"/>
+            ${avgX == null ? '' : `<line x1="${avgX.toFixed(1)}" y1="0" x2="${avgX.toFixed(1)}" y2="${pdH}" stroke="var(--hxAvg)" stroke-dasharray="2 4"/>`}
             ${lanes.map(o => `<g data-pd="${o.i}" style="cursor:pointer">
               <rect x="0" y="${o.y - 11}" width="${cw}" height="${rowH}" fill="transparent"/>
               <rect x="${tX}" y="${o.y}" width="${tW.toFixed(1)}" height="12" rx="6" fill="var(--track)"/>
@@ -616,7 +624,7 @@
         <div style="position:relative;margin-top:14px">
           <svg width="100%" height="164" viewBox="0 0 ${cw} 164" preserveAspectRatio="none" style="display:block">
             <rect x="${(px5 + 4 * sx5 - sx5 * 0.5).toFixed(1)}" y="0" width="${(sx5 * 2).toFixed(1)}" height="150" rx="10" fill="${al(P.bad, 0.06)}"/>
-            <line x1="0" y1="${y5(score).toFixed(1)}" x2="${cw}" y2="${y5(score).toFixed(1)}" stroke="var(--hxAvg)" stroke-dasharray="2 4"/>
+            ${score == null ? '' : `<line x1="0" y1="${y5(score).toFixed(1)}" x2="${cw}" y2="${y5(score).toFixed(1)}" stroke="var(--hxAvg)" stroke-dasharray="2 4"/>`}
             ${H.map((h, i) => {
               const p = smooth(h.row.map((v, j) => ({ x: px5 + j * sx5, y: y5(v) })));
               const on = i === focusIdx;
@@ -624,7 +632,7 @@
             }).join('')}
           </svg>
           ${H[focusIdx] ? H[focusIdx].row.map((v, j) => `<div style="position:absolute;left:${((px5 + j * sx5) / cw * 100).toFixed(2)}%;top:${y5(v).toFixed(1)}px;width:7px;height:7px;margin:-3.5px 0 0 -3.5px;border-radius:999px;background:${slopeOn};pointer-events:none"></div>`).join('') : ''}
-          <div style="position:absolute;left:0;top:${y5(score).toFixed(1)}px;transform:translateY(-50%);font:700 8.5px/1 Manrope;letter-spacing:0.14em;color:var(--text-muted);padding-right:5px">AVG</div>
+          ${score == null ? '' : `<div style="position:absolute;left:0;top:${y5(score).toFixed(1)}px;transform:translateY(-50%);font:700 8.5px/1 Manrope;letter-spacing:0.14em;color:var(--text-muted);padding-right:5px">AVG</div>`}
         </div>
         <div style="display:flex">
           ${WD.map((w, i) => `<div style="flex:1 1 0;text-align:center;font:700 10.5px/1 Manrope;letter-spacing:0.06em;color:${i >= 4 && i <= 5 ? 'var(--text-secondary)' : 'var(--text-muted)'}">${w.slice(0,2).toUpperCase()}</div>`).join('')}

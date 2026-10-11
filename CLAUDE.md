@@ -61,7 +61,14 @@ Guidance for Claude (and humans) working in this repo.
   compare the last 30 days up to yesterday (today never counts, like the
   streak) with the 30 before. Days count from the first tick in the timeline
   on; a window with fewer than 7 such days is null, and so is its delta. The
-  month bars and best month stay the sheet's own calendar-month counts.
+  Consistency card and the AVG lines show the same window's mean daily good-%
+  (`rolling.good`, `weekdayAvg`, `weekendAvg`); the year heatmap keeps the
+  whole year.
+- **The Momentum curve (`monthWindow`, `monthGood`).** Each month's point is
+  the mean daily good-% of its days up to yesterday, from the timeline by the
+  same rule, so the running month is drawn only from its 8th day on. vs best
+  month compares against these months. The sheet's own row-47 month counts
+  feed only `bestMonthEver`, which the page does not show.
 
 ### Environment variables (set in Vercel — do not hardcode)
 

@@ -86,6 +86,8 @@ const trendOf = S => ({
   momentum: S.momentum.map(m => ({ name: m.name, now: m.now, delta: m.delta })),
   rolling: S.rolling,
   consistency: S.consistency,
+  weekdayAvg: S.weekdayAvg,
+  weekendAvg: S.weekendAvg,
   weekendGap: S.weekendGap,
   weekday: S.weekday,
   matrix: S.matrix,
@@ -135,17 +137,17 @@ const septemberCols = d => {
   return out;
 };
 
-// Jul 1 - Aug 31 in the August pattern, Sep 1 - `to` in the September
-// pattern; bars: July 65% (the best), August 22%, September 57%.
+// June with both good habits every day, Jul 1 - Aug 31 in the August
+// pattern, Sep 1 - `to` in the September pattern. The month curve from the
+// timeline: June 100, July 21, August 23, September 57 (mean daily good-%).
 function steadyYear(to) {
   const grids = buildYear(2026);
+  tickDays(grids, at(2026, 5, 1), at(2026, 5, 30), () => [EXERCISE, READ]);
   tickDays(grids, at(2026, 6, 1), at(2026, 7, 31), augustCols);
   tickDays(grids, at(2026, 8, 1), to, septemberCols);
-  setBar(grids, 6, 0.65);
-  setBar(grids, 7, 0.22);
-  setBar(grids, 8, 0.57);
   return grids;
 }
+const drawn = monthGood => monthGood.filter(v => v !== null);
 
 // ── the windows themselves ─────────────────────────────────
 
@@ -179,7 +181,14 @@ test('on the 1st with today unticked the numbers equal the last day of the month
   ]);
   assert.deepEqual(oct1.rolling, { good: 57, prevGood: 22, days: 30 });
   assert.equal(oct1.consistency, 13);          // the four Fridays are the only >=66% days
-  assert.equal(oct1.vsBest, 57 - 65);          // against July, the best completed month
+  assert.equal(oct1.weekdayAvg, 59);           // (18 x 50% + 4 Fridays x 100%) / 22
+  assert.equal(oct1.weekendAvg, 50);
+  assert.equal(oct1.vsBest, 57 - 100);         // against June, the best completed month
+
+  // the curve has no October point yet, so it ends on September on both days
+  assert.equal(oct1.monthGood[9], null);
+  assert.deepEqual(drawn(oct1.monthGood), [100, 21, 23, 57]);
+  assert.deepEqual(drawn(sep30.monthGood), [100, 21, 23, 57]);
 
   const habitsSep30 = await call(getHabits, '2026-09-30');
   const habitsOct1 = await call(getHabits, '2026-10-01');
@@ -205,15 +214,87 @@ test('ticking today changes none of the 30-day numbers', async () => {
   assert.ok(habitsAfter.percent > habitsBefore.percent, 'the live week counts today');
 
   assert.deepEqual(trendOf(after), trendOf(before));
+  assert.deepEqual(after.monthGood, before.monthGood); // the curve stops at yesterday too
   assert.deepEqual(habitPctOf(habitsAfter), habitPctOf(habitsBefore));
 });
 
-test('vs best month compares with completed months only, never the running one', async () => {
+test('vs best month: the best completed month of the curve, never the running one', async () => {
+  // Aug-Sep in the September pattern (56%, 57%), Oct 1-10 every habit
+  // (100%). The sheet's own row-47 bar says 99% for September; the curve
+  // and vs best month no longer read it.
+  const grids = buildYear(2026);
+  tickDays(grids, at(2026, 7, 1), at(2026, 8, 30), septemberCols);
+  tickDays(grids, at(2026, 9, 1), at(2026, 9, 10), () => [NO_SUGAR, EXERCISE, READ]);
+  setBar(grids, 8, 0.99);
+  reset({ grids });
+
+  const S = await call(getStats, '2026-10-11');
+  assert.deepEqual(drawn(S.monthGood), [56, 57, 100]); // Aug, Sep, Oct so far
+  assert.equal(S.rolling.good, 72);                    // Sep 11 - Oct 10
+  assert.equal(S.vsBest, 72 - 57);                     // September: not October, not row 47
+});
+
+// ── the month curve and the Consistency card ───────────────
+
+test('the month curve leaves the running month out until it has 7 days of data', async () => {
+  // steadyYear through September, then every habit Oct 1-7 (100%). The
+  // row-47 bars say 11% and 99%; the curve comes from the timeline.
+  const grids = steadyYear(at(2026, 8, 30));
+  tickDays(grids, at(2026, 9, 1), at(2026, 9, 7), () => [NO_SUGAR, EXERCISE, READ]);
+  setBar(grids, 8, 0.11);
+  setBar(grids, 9, 0.99);
+  reset({ grids });
+
+  for (const date of ['2026-10-01', '2026-10-07']) { // 0 and 6 days of October
+    const S = await call(getStats, date);
+    assert.equal(S.monthGood.length, 10, date);     // Jan..Oct
+    assert.equal(S.monthGood[9], null, date);
+    assert.deepEqual(drawn(S.monthGood), [100, 21, 23, 57], date);
+  }
+
+  const oct8 = await call(getStats, '2026-10-08'); // Oct 1-7: a week of data
+  assert.equal(oct8.monthGood[9], 100);
+  assert.deepEqual(drawn(oct8.monthGood), [100, 21, 23, 57, 100]);
+});
+
+test('rolling.good is the mean of dayPercent over the window; the bars split the same days', async () => {
   const grids = steadyYear(at(2026, 9, 10));
-  setBar(grids, 9, 0.95); // October so far — still filling up, so not the bar to beat
   reset({ grids });
   const S = await call(getStats, '2026-10-11');
-  assert.equal(S.vsBest, S.rolling.good - 65);
+
+  // the same numbers straight from the timeline: Sep 11 - Oct 10
+  const tl = TL.buildTimeline(grids, CP.readSlots(makeCpRows()), [], at(2026, 9, 11));
+  const days = TL.rollingWindows(tl, at(2026, 9, 11)).now;
+  const mean = ds => Math.round(ds.reduce((s, d) => s + TL.dayPercent(d), 0) / ds.length * 100);
+  const weekend = d => d.date.getDay() === 0 || d.date.getDay() === 6;
+  assert.equal(S.rolling.good, mean(days));
+  assert.equal(S.weekdayAvg, mean(days.filter(d => !weekend(d))));
+  assert.equal(S.weekendAvg, mean(days.filter(weekend)));
+
+  // (25 x 50% + 5 Fridays x 100%) / 30; weekdays (16 x 50% + 5 x 100%) / 21
+  assert.equal(S.rolling.good, 58);
+  assert.equal(S.weekdayAvg, 62);
+  assert.equal(S.weekendAvg, 50);
+  assert.equal(S.weekendGap, -12);
+});
+
+test('1 January with December in the archive: the Consistency numbers are the last 30 days', async () => {
+  // The 2029 sheet starts on Monday 1 January, so that morning the whole
+  // window (Dec 2-31) lives in "Archive 2028": Exercise every day from
+  // November, Read on weekdays.
+  const archive = buildArchive(2028,
+    [{ slot: 0, name: 'No sugar' }, { slot: 7, name: 'Exercise' }, { slot: 8, name: 'Read' }],
+    (d, slot) => d >= at(2028, 10, 1) &&
+      (slot === 7 || (slot === 8 && d.getDay() !== 0 && d.getDay() !== 6)));
+  reset({ grids: buildYear(2029), archives: { 2028: archive } });
+
+  const S = await call(getStats, '2029-01-01');
+  assert.deepEqual(S.rolling, { good: 83, prevGood: 87, days: 30 }); // (20 x 100% + 10 x 50%) / 30
+  assert.equal(S.weekdayAvg, 100);
+  assert.equal(S.weekendAvg, 50);
+  // the year so far is today alone, unticked: a whole-year card said 0
+  assert.deepEqual(S.daily, [{ t: '2029-01-01', p: 0 }]);
+  assert.deepEqual(S.monthGood, [null]); // and January has no point yet
 });
 
 // ── 3. across new year ─────────────────────────────────────
@@ -273,6 +354,9 @@ test('a new user: the earlier window has no data, so every delta is null', async
     { name: 'Read',     now: 48, delta: null }  // 10/21
   ]);
   assert.deepEqual(S.rolling, { good: 74, prevGood: null, days: 30 }); // (10 x 100% + 11 x 50%) / 21
+  // the curve starts at September, counted from Sep 20 (10 x 100% + 50%) / 11
+  assert.deepEqual(S.monthGood, [null, null, null, null, null, null, null, null, 95, 50]);
+  assert.equal(S.vsBest, 74 - 95);
 
   const H = await call(getHabits, '2026-10-11');
   assert.deepEqual(H.goodHabitStats, [{ name: 'Exercise', percent: 100 }, { name: 'Read', percent: 48 }]);
@@ -293,10 +377,13 @@ test('six days of data is too thin for any number; seven is enough', async () =>
   });
   assert.deepEqual(S.rolling, { good: null, prevGood: null, days: 30 });
   assert.equal(S.consistency, null);
+  assert.equal(S.weekdayAvg, null);
+  assert.equal(S.weekendAvg, null);
   assert.equal(S.weekendGap, null);
   assert.deepEqual(S.weekday, [null, null, null, null, null, null, null]);
   S.matrix.forEach(m => assert.deepEqual(m.days, [null, null, null, null, null, null, null]));
   assert.equal(S.vsBest, null);
+  assert.deepEqual(drawn(S.monthGood), []);
 
   const H = await call(getHabits, '2026-10-11');
   H.goodHabitStats.concat(H.badHabitStats).forEach(h => assert.equal(h.percent, null, h.name));
@@ -311,6 +398,9 @@ test('six days of data is too thin for any number; seven is enough', async () =>
     { name: 'Read',     now: 0,   delta: null }
   ]);
   assert.equal(S7.rolling.good, 50);
+  assert.equal(S7.weekdayAvg, 50);
+  assert.equal(S7.weekendAvg, 50);
+  assert.deepEqual(drawn(S7.monthGood), [50]);
   const H7 = await call(getHabits, '2026-10-11');
   assert.deepEqual(H7.worst, { name: 'No sugar', percent: 100 });
 });

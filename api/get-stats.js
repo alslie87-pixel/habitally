@@ -13,14 +13,15 @@ const CP = require('./_controlPanel');
 //
 // Month grid columns (0-based within A1:X47):
 //   B=1 date · C..I=2..8 bad · J..P=9..15 good
-//   Row 47 (idx 46) = the sheet's own monthly counts, kept for the month
-//   bars; every other number is derived from the ONE TIMELINE across the
-//   years (_timeline.js): the live tabs plus the "Archive <year>" tabs,
-//   one entry per calendar date. All-time really means all time, and the
-//   current year's numbers include archive days that belong to it (1-3
-//   January live in the previous sheet's archive). The trend numbers
-//   (momentum, consistency, power days, where habits break, vs best month)
-//   read the last 30 days up to yesterday, never the month so far.
+//   Row 47 (idx 46) = the sheet's own monthly counts, kept for
+//   bestMonthEver; every other number is derived from the ONE TIMELINE
+//   across the years (_timeline.js): the live tabs plus the "Archive
+//   <year>" tabs, one entry per calendar date. All-time really means all
+//   time, and the current year's numbers include archive days that belong
+//   to it (1-3 January live in the previous sheet's archive). The trend
+//   numbers (momentum, consistency, power days, where habits break, vs best
+//   month) read the last 30 days up to yesterday, never the month so far,
+//   and the Momentum curve's months stop at yesterday too.
 // Control Panel: habit slots and the Z1 marker — see _controlPanel.js.
 
 const MONTHS = ["January","February","March","April","May","June",
@@ -121,7 +122,9 @@ module.exports = async (req, res) => {
     });
     const bestWeekEver = TL.bestWeekEver(tl);
 
-    // ── month bars (the sheet's own row-47 counts) ───────────
+    // ── the sheet's own row-47 month counts ──────────────────
+    // Kept for bestMonthEver; the Momentum curve and vs best month are built
+    // from the timeline below.
     const months = [];
     monthGrids.forEach((grid, mi) => {
       const g47 = grid[46] || [];
@@ -131,42 +134,34 @@ module.exports = async (req, res) => {
       (m.good !== null && (bi === -1 || m.good > months[bi].good)) ? i : bi, -1);
 
     // ── the last 30 days ─────────────────────────────────────
-    // Good-habit percent of a window: the mean of its days, each day against
-    // its own roster (dayPercent), like the heatmap. null for a thin window.
+    // Good-habit percent of some days: the mean of dayPercent, each day
+    // against its own roster, like the heatmap (a day without good habits
+    // is skipped). null for no days, so a thin window gives null.
     const goodIn = days => {
-      if (!days) return null;
       let sum = 0, n = 0;
-      days.forEach(d => { const p = TL.dayPercent(d); if (p !== null) { sum += p; n++; } });
+      (days || []).forEach(d => { const p = TL.dayPercent(d); if (p !== null) { sum += p; n++; } });
       return n ? sum / n : null;
     };
     const pct = v => v !== null ? Math.round(v * 100) : null;
+    const recentDays = win.now || [];
     const rollingGood = pct(goodIn(win.now));
     const rolling = { good: rollingGood, prevGood: pct(goodIn(win.prev)), days: TL.ROLLING_DAYS };
 
-    // Vs best month: the last 30 days against the best COMPLETED calendar
-    // month of the bars, in points. The running month is still filling up,
-    // so it is never the bar to beat.
-    const doneGood = months.slice(0, curMonth).map(m => m.good).filter(g => g !== null);
-    const vsBest = (rollingGood !== null && doneGood.length)
-      ? rollingGood - Math.round(Math.max(...doneGood) * 100) : null;
+    // The Consistency card: the same days, weekdays against weekends.
+    const weekdayGood = goodIn(recentDays.filter(d => weekdayOf(d.date) <= 5));
+    const weekendGood = goodIn(recentDays.filter(d => weekdayOf(d.date) > 5));
+    const weekendGap = (weekdayGood !== null && weekendGood !== null) ? weekendGood - weekdayGood : null;
 
-    const recentDays = win.now || [];
+    // Power days: the same days, per weekday.
+    const weekday = [];
+    for (let d = 1; d <= 7; d++) weekday.push(pct(goodIn(recentDays.filter(x => weekdayOf(x.date) === d))));
+
+    // Share of the days at 66% or more (not shown on the page).
     const pOf = day => TL.dayPercent(day) || 0;
-
     const consistency = recentDays.length
       ? recentDays.filter(d => pOf(d) >= 0.66).length / recentDays.length : null;
 
-    const wkendDays = recentDays.filter(d => weekdayOf(d.date) > 5);
-    const wkdayDays = recentDays.filter(d => weekdayOf(d.date) <= 5);
-    const avg = ds => ds.length ? ds.reduce((s, d) => s + pOf(d), 0) / ds.length : null;
-    const weekendGap = (wkendDays.length && wkdayDays.length) ? avg(wkendDays) - avg(wkdayDays) : null;
-
-    const weekday = [];
-    for (let d = 1; d <= 7; d++) {
-      const ds = recentDays.filter(x => weekdayOf(x.date) === d);
-      weekday.push(ds.length ? Math.round(avg(ds) * 100) : null);
-    }
-
+    // Where habits break: the same days, per habit and weekday.
     const matrix = active.map(h => {
       const days = [];
       for (let d = 1; d <= 7; d++) {
@@ -177,6 +172,20 @@ module.exports = async (req, res) => {
       }
       return { name: h.name, type: h.type, days };
     });
+
+    // ── the month curve ──────────────────────────────────────
+    // Every month of the current year from the timeline: the mean daily
+    // good-% of its days up to yesterday, from the first tick on. A month
+    // with fewer than 7 such days is null (the running month's first week,
+    // a new user's first days), so the curve ends on the month before.
+    const monthGood = [];
+    for (let m = 0; m <= curMonth; m++) monthGood.push(pct(goodIn(TL.monthWindow(tl, curYear, m, today))));
+
+    // Vs best month: the last 30 days against the best COMPLETED month of
+    // that curve, in points. The running month is still filling up, so it
+    // is never the bar to beat.
+    const doneGood = monthGood.slice(0, curMonth).filter(g => g !== null);
+    const vsBest = (rollingGood !== null && doneGood.length) ? rollingGood - Math.max(...doneGood) : null;
 
     // ── habit momentum + all-time ────────────────────────────
     // The last 30 days against the 30 before, so in January the earlier
@@ -260,8 +269,10 @@ module.exports = async (req, res) => {
       trophyCase,
       needsOnboarding,
       habits: active.map(h => ({ name: h.name, type: h.type })),
-      months, daily, weekday, matrix, momentum, leaderboard, rolling,
+      months, monthGood, daily, weekday, matrix, momentum, leaderboard, rolling,
       consistency: pct(consistency),
+      weekdayAvg: pct(weekdayGood),
+      weekendAvg: pct(weekendGood),
       weekendGap: pct(weekendGap),
       perfectDays, comebacks, checksYTD,
       vsBest,

@@ -4,7 +4,8 @@
 // lives in a hidden "Archive <startyear>" tab that the sheet's own Start
 // new year menu writes before it clears the grid (see _archive.js). This
 // module merges them into one day list, so streaks, trends, focus counters,
-// the rolling 30-day windows and trophies do not notice new year.
+// the rolling 30-day windows, the month curve and trophies do not notice
+// new year.
 //
 //   - days are keyed by calendar date, each date once; the LIVE SHEET WINS
 //     when a date appears both in the sheet and in an archive
@@ -179,18 +180,27 @@ function focusTicks(tl, key, today, windowDays) {
 const ROLLING_DAYS = 30;
 const MIN_WINDOW_DAYS = 7;
 
-function rollingWindows(tl, today) {
+// The data days from..to (inclusive), or null when there are too few.
+function dataWindow(tl, from, to) {
   const first = tl.days.find(d => d.ticks.size > 0);
-  const span = (back, upTo) => {
-    if (!first) return null;
-    const from = addDays(today, -back), to = addDays(today, -upTo);
-    const days = tl.days.filter(d => d.date >= from && d.date <= to && d.date >= first.date);
-    return days.length >= MIN_WINDOW_DAYS ? days : null;
-  };
+  if (!first) return null;
+  const days = tl.days.filter(d => d.date >= from && d.date <= to && d.date >= first.date);
+  return days.length >= MIN_WINDOW_DAYS ? days : null;
+}
+
+function rollingWindows(tl, today) {
   return {
-    now:  span(ROLLING_DAYS, 1),
-    prev: span(2 * ROLLING_DAYS, ROLLING_DAYS + 1)
+    now:  dataWindow(tl, addDays(today, -ROLLING_DAYS), addDays(today, -1)),
+    prev: dataWindow(tl, addDays(today, -2 * ROLLING_DAYS), addDays(today, -ROLLING_DAYS - 1))
   };
+}
+
+// One calendar month as a data window: its days up to yesterday, by the
+// same rule, so the running month says nothing in its first week.
+function monthWindow(tl, year, month, today) {
+  const end = new Date(year, month + 1, 0);
+  const yesterday = addDays(today, -1);
+  return dataWindow(tl, new Date(year, month, 1), end < yesterday ? end : yesterday);
 }
 
 // ── weeks (Mon-Sun) from raw ticks ─────────────────────────
@@ -261,7 +271,7 @@ function longestRun(tl, key) {
 
 module.exports = {
   habitKey, addDays, mondayOf, buildTimeline, archiveRoster,
-  daysOfYear, daysOfMonth, streakOf, focusTicks, rollingWindows,
+  daysOfYear, daysOfMonth, streakOf, focusTicks, rollingWindows, monthWindow,
   weekPercent, dayPercent, bestWeekEver, tickedIn, longestRun,
   ROLLING_DAYS, MIN_WINDOW_DAYS
 };
