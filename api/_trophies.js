@@ -59,7 +59,7 @@ const yearThreshold = year => Math.floor(daysInYear(year) * RATE);
  *
  * Returns { trophies, conqueredThisMonth, ticksByHabit } where
  * ticksByHabit maps habit KEY -> ticks in the month `curMonth` (empty when
- * curMonth is null), so get-habits builds its percentages from this scan.
+ * curMonth is null), so get-habits picks next to fall from this scan.
  */
 function computeTrophiesForYear(days, badHabits, year, curMonth) {
   const habits = (badHabits || []).filter(h => KEEPS_TROPHIES.indexOf(h.status) !== -1);
@@ -128,13 +128,8 @@ function computeTrophiesForYear(days, badHabits, year, curMonth) {
   };
 }
 
-// Calendar days of the current month up to and including today.
-function elapsedThisMonth(today) {
-  return today.getDate();
-}
-
 module.exports = {
-  computeTrophiesForYear, elapsedThisMonth,
+  computeTrophiesForYear,
   monthThreshold, yearThreshold, daysInMonth, daysInYear,
   SEASONS, KEEPS_TROPHIES, RATE
 };

@@ -179,9 +179,11 @@ test('the January trophy counts 1-3 January out of the archive', async () => {
   assert.equal(S.trophyCase.past[0].year, 2026);
   assert.deepEqual(S.trophyCase.past[0].months, [{ name: 'No sugar', m: 11, when: 'Dec' }]);
 
-  // "vs last month" in January is December out of the archive
+  // momentum is the last 30 days (Jan 1-30: 28 avoided) against the 30
+  // before, which in January are December days out of the archive (all 30)
   const momentum = S.momentum.find(h => h.name === 'No sugar');
-  assert.equal(momentum.delta, Math.round((28 / 31 - 1) * 100)); // -10
+  assert.equal(momentum.now, Math.round((28 / 30) * 100)); // 93
+  assert.equal(momentum.delta, Math.round((28 / 30 - 1) * 100)); // -7
   assert.equal(momentum.bestStreak, 59); // Dec 1 - Jan 28, across the rollover
 
   // the heatmap year includes the archived 1-3 January

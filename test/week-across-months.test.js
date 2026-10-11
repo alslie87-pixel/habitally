@@ -160,10 +160,11 @@ test('get-habits on 2026-09-28 serves and writes to the October tab', async () =
   // streak spans the timeline and today never counts
   assert.equal(body.streak, 3); // Sep 25, 26, 27
 
-  // month stats bucket by calendar date: the Sep 28 tick in the October
-  // tab counts for September (4 ticks / 28 elapsed days)
+  // the habit percentages read the last 30 days up to yesterday: today's
+  // tick never counts, and Sep 25-27 are three days of data, too thin to
+  // say anything yet
   const exStats = body.goodHabitStats.find(h => h.name === 'Exercise');
-  assert.equal(exStats.percent, Math.round((4 / 28) * 100));
+  assert.equal(exStats.percent, null);
 });
 
 test('get-habits on 2026-09-30: same October week, right today-flag', async () => {
