@@ -3,7 +3,7 @@ const { resolveSheetId } = require('./_user');
 const { todayFrom } = require('./_date');
 const { serialToDate, isChecked, FOCUS_WINDOW_DAYS } = require('./_streak');
 const { sheetEndFromGrids, yearState, outOfYearPayload } = require('./_year');
-const { computeTrophiesForYear, elapsedThisMonth } = require('./_trophies');
+const { computeTrophiesForYear } = require('./_trophies');
 const { findCurrentWeek } = require('./_week');
 const { readArchives } = require('./_archive');
 const TL = require('./_timeline');
@@ -21,9 +21,9 @@ const CP = require('./_controlPanel');
 // Every number below the calendar comes from the ONE TIMELINE across the
 // years (_timeline.js): the twelve live tabs plus the "Archive <year>"
 // tabs, one entry per calendar date. Streak, focus counters, the weekly
-// trend and the trophies therefore survive new year. Weekly percentages
-// are computed from the raw ticks (Mon-Sun), not from the sheet's own
-// summary rows.
+// trend, the 30-day habit percentages and the trophies therefore survive
+// new year. Weekly percentages are computed from the raw ticks (Mon-Sun),
+// not from the sheet's own summary rows.
 
 const COL_WEAKEST     = 19; // T
 const COL_SIGNAL      = 20; // U
@@ -254,38 +254,33 @@ module.exports = async (req, res) => {
     const signalMsg = weekGrid[weekRow] && weekGrid[weekRow][COL_SIGNAL]
       ? String(weekGrid[weekRow][COL_SIGNAL]).trim() : 'Keep going!';
 
-    // ── 9. DAYS ELAPSED + TOTAL TRACKABLE ───────────────────
+    // ── 9. DAYS ELAPSED ─────────────────────────────────────
     const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
     const daysElapsed  = Math.floor((today - firstOfMonth) / 86400000) + 1;
 
-    // Calendar days of this month so far; the month's early days can live
-    // in last year's archive, but they are calendar days all the same.
-    const totalDays = elapsedThisMonth(today);
-
-    // ── 10. TROPHIES + MONTH COUNTS ─────────────────────────
+    // ── 10. TROPHIES ────────────────────────────────────────
     // One scan over the current CALENDAR year's timeline days feeds the
-    // trophy case, the next-to-fall pick and every percentage below, so
-    // they cannot disagree. Days that live in last year's archive (1-3
-    // January) count for this year's months all the same.
+    // trophy case and the next-to-fall pick, so they cannot disagree. Days
+    // that live in last year's archive (1-3 January) count for this year's
+    // months all the same.
     const curYear = today.getFullYear();
     const yearDays = TL.daysOfYear(tl, curYear);
-    const monthDays = TL.daysOfMonth(tl, curYear, today.getMonth());
 
     const trophyScan = computeTrophiesForYear(yearDays, badHabits, curYear, today.getMonth());
     const badTicks = trophyScan.ticksByHabit; // by habit key
     const conqueredThisMonth = trophyScan.conqueredThisMonth;
 
-    const pctOf = ticks => totalDays > 0 ? Math.round((ticks / totalDays) * 100) : 0;
-    const goodHabitStats = activeGood.map(h => ({
-      name: h.name,
-      percent: pctOf(TL.tickedIn(monthDays, h.key))
-    }));
-    const badHabitStats = activeBad.map(h => ({
-      name: h.name,
-      percent: pctOf(badTicks[h.key] || 0)
-    }));
+    // ── 10b. THE LAST 30 DAYS ───────────────────────────────
+    // Needs work, Best progress and the habits overview are the share of the
+    // last 30 days up to yesterday (_timeline.js), not of the month so far:
+    // the 1st of a month does not start from zero, and today never counts.
+    // A window too thin to say anything (a new user's first week) gives null.
+    const recent = TL.rollingWindows(tl, today).now;
+    const pctOf = key => recent ? Math.round((TL.tickedIn(recent, key) / recent.length) * 100) : null;
+    const goodHabitStats = activeGood.map(h => ({ name: h.name, percent: pctOf(h.key) }));
+    const badHabitStats = activeBad.map(h => ({ name: h.name, percent: pctOf(h.key) }));
 
-    const sortedBad = badHabitStats.slice().sort((a, b) => a.percent - b.percent);
+    const sortedBad = recent ? badHabitStats.slice().sort((a, b) => a.percent - b.percent) : [];
     const worst = sortedBad.length > 0 ? sortedBad[0] : null;
     const best  = sortedBad.length > 0 ? sortedBad[sortedBad.length - 1] : null;
 

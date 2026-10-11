@@ -18,7 +18,9 @@ const CP = require('./_controlPanel');
 //   years (_timeline.js): the live tabs plus the "Archive <year>" tabs,
 //   one entry per calendar date. All-time really means all time, and the
 //   current year's numbers include archive days that belong to it (1-3
-//   January live in the previous sheet's archive).
+//   January live in the previous sheet's archive). The trend numbers
+//   (momentum, consistency, power days, where habits break, vs best month)
+//   read the last 30 days up to yesterday, never the month so far.
 // Control Panel: habit slots and the Z1 marker — see _controlPanel.js.
 
 const MONTHS = ["January","February","March","April","May","June",
@@ -80,7 +82,8 @@ module.exports = async (req, res) => {
     const tl = TL.buildTimeline(monthGrids, slots, archives, today);
     const allDays = tl.days;
     const yearDays = TL.daysOfYear(tl, curYear);
-    const monthDaysNow = TL.daysOfMonth(tl, curYear, curMonth);
+    // the last 30 days up to yesterday and the 30 before; null when too thin
+    const win = TL.rollingWindows(tl, today);
 
     // ── daily series + all-time tiles ────────────────────────
     // The heatmap shows the current calendar year, archive days included;
@@ -126,30 +129,48 @@ module.exports = async (req, res) => {
     });
     const bestMonthIdx = months.reduce((bi, m, i) =>
       (m.good !== null && (bi === -1 || m.good > months[bi].good)) ? i : bi, -1);
-    const vsBest = (bestMonthIdx >= 0 && months[curMonth] && months[curMonth].good)
-      ? months[curMonth].good / months[bestMonthIdx].good : null;
 
-    // ── current month detail ─────────────────────────────────
-    const elapsed = monthDaysNow.length || 1;
+    // ── the last 30 days ─────────────────────────────────────
+    // Good-habit percent of a window: the mean of its days, each day against
+    // its own roster (dayPercent), like the heatmap. null for a thin window.
+    const goodIn = days => {
+      if (!days) return null;
+      let sum = 0, n = 0;
+      days.forEach(d => { const p = TL.dayPercent(d); if (p !== null) { sum += p; n++; } });
+      return n ? sum / n : null;
+    };
+    const pct = v => v !== null ? Math.round(v * 100) : null;
+    const rollingGood = pct(goodIn(win.now));
+    const rolling = { good: rollingGood, prevGood: pct(goodIn(win.prev)), days: TL.ROLLING_DAYS };
+
+    // Vs best month: the last 30 days against the best COMPLETED calendar
+    // month of the bars, in points. The running month is still filling up,
+    // so it is never the bar to beat.
+    const doneGood = months.slice(0, curMonth).map(m => m.good).filter(g => g !== null);
+    const vsBest = (rollingGood !== null && doneGood.length)
+      ? rollingGood - Math.round(Math.max(...doneGood) * 100) : null;
+
+    const recentDays = win.now || [];
     const pOf = day => TL.dayPercent(day) || 0;
 
-    const consistency = monthDaysNow.filter(d => pOf(d) >= 0.66).length / elapsed;
+    const consistency = recentDays.length
+      ? recentDays.filter(d => pOf(d) >= 0.66).length / recentDays.length : null;
 
-    const wkendDays = monthDaysNow.filter(d => weekdayOf(d.date) > 5);
-    const wkdayDays = monthDaysNow.filter(d => weekdayOf(d.date) <= 5);
+    const wkendDays = recentDays.filter(d => weekdayOf(d.date) > 5);
+    const wkdayDays = recentDays.filter(d => weekdayOf(d.date) <= 5);
     const avg = ds => ds.length ? ds.reduce((s, d) => s + pOf(d), 0) / ds.length : null;
     const weekendGap = (wkendDays.length && wkdayDays.length) ? avg(wkendDays) - avg(wkdayDays) : null;
 
     const weekday = [];
     for (let d = 1; d <= 7; d++) {
-      const ds = monthDaysNow.filter(x => weekdayOf(x.date) === d);
+      const ds = recentDays.filter(x => weekdayOf(x.date) === d);
       weekday.push(ds.length ? Math.round(avg(ds) * 100) : null);
     }
 
     const matrix = active.map(h => {
       const days = [];
       for (let d = 1; d <= 7; d++) {
-        const ds = monthDaysNow.filter(x => weekdayOf(x.date) === d);
+        const ds = recentDays.filter(x => weekdayOf(x.date) === d);
         days.push(ds.length
           ? Math.round(TL.tickedIn(ds, h.key) / ds.length * 100)
           : null);
@@ -158,17 +179,14 @@ module.exports = async (req, res) => {
     });
 
     // ── habit momentum + all-time ────────────────────────────
-    // "vs last month" is the previous CALENDAR month, so in January it is
-    // December out of the archive.
-    const prevMonthDays = curMonth > 0
-      ? TL.daysOfMonth(tl, curYear, curMonth - 1)
-      : TL.daysOfMonth(tl, curYear - 1, 11);
-
-    const pctIn = (days, key) => days.length ? TL.tickedIn(days, key) / days.length : null;
+    // The last 30 days against the 30 before, so in January the earlier
+    // window is December out of the archive. A thin window (a new user)
+    // gives null, and no delta.
+    const pctIn = (days, key) => (days && days.length) ? TL.tickedIn(days, key) / days.length : null;
 
     const momentum = active.map(h => {
-      const nowP  = pctIn(monthDaysNow, h.key);
-      const lastP = pctIn(prevMonthDays, h.key);
+      const nowP  = pctIn(win.now, h.key);
+      const prevP = pctIn(win.prev, h.key);
       // per-habit monthly series (Jan..current, of the current year)
       const series = [];
       for (let m = 0; m <= curMonth; m++) {
@@ -178,7 +196,7 @@ module.exports = async (req, res) => {
       return {
         name: h.name, type: h.type,
         now: nowP !== null ? Math.round(nowP * 100) : null,
-        delta: (nowP !== null && lastP !== null) ? Math.round((nowP - lastP) * 100) : null,
+        delta: (nowP !== null && prevP !== null) ? Math.round((nowP - prevP) * 100) : null,
         series,
         bestStreak: TL.longestRun(tl, h.key),
         allTime: allDays.length ? Math.round(TL.tickedIn(allDays, h.key) / allDays.length * 100) : 0
@@ -242,11 +260,11 @@ module.exports = async (req, res) => {
       trophyCase,
       needsOnboarding,
       habits: active.map(h => ({ name: h.name, type: h.type })),
-      months, daily, weekday, matrix, momentum, leaderboard,
-      consistency: Math.round(consistency * 100),
-      weekendGap: weekendGap !== null ? Math.round(weekendGap * 100) : null,
+      months, daily, weekday, matrix, momentum, leaderboard, rolling,
+      consistency: pct(consistency),
+      weekendGap: pct(weekendGap),
       perfectDays, comebacks, checksYTD,
-      vsBest: vsBest !== null ? Math.round(vsBest * 100) : null,
+      vsBest,
       bestDayEver: Math.round(bestDayEver * 100),
       bestWeekEver,
       bestMonthEver: bestMonthIdx >= 0

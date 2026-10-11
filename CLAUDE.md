@@ -21,7 +21,7 @@ Guidance for Claude (and humans) working in this repo.
 | `_week.js` | — | Finds the week that contains today, in whichever month tab it lives. |
 | `_streak.js` | — | The streak rule (66%, backwards from yesterday) and the shared sheet-value helpers; the computation itself walks the timeline. |
 | `_year.js` | — | Which dates the sheet covers (its own week formulas); locks the app only when today is past the sheet's last day. |
-| `_timeline.js` | — | The one timeline across years: live tabs + archives merged per calendar date (sheet wins), habits matched on type + name. Streak, focus counters, weekly trend and per-habit aggregates live here. |
+| `_timeline.js` | — | The one timeline across years: live tabs + archives merged per calendar date (sheet wins), habits matched on type + name. Streak, focus counters, weekly trend, the rolling 30-day windows and per-habit aggregates live here. |
 | `_trophies.js` | — | Month / season / year trophies for bad habits, per calendar year over timeline days. |
 | `get-habits.js` | **read** (readonly scope) | One batchGet over the twelve month tabs + Control Panel, plus the archives; returns habits, config, and the timeline-derived streak, trend and focus counters. |
 | `get-coaching.js` | **none** | No sheet access — takes stats from the request body, calls OpenAI (`OPENAI_API_KEY`), returns a coaching note. |
@@ -51,11 +51,17 @@ Guidance for Claude (and humans) working in this repo.
   sheet winning over the archive. Habits match on slot type + trimmed,
   case-insensitive name (a renamed habit is a new habit); slot position decides
   the type (1–7 bad, 8–14 good). Streak, focus "X/30", the 4-week trend and
-  signal (raw Mon–Sun ticks, not the sheet's summary rows), momentum's "vs last
-  month", all-time numbers and trophies are all derived from it, so nothing
+  signal (raw Mon–Sun ticks, not the sheet's summary rows), the 30-day trend
+  numbers, all-time numbers and trophies are all derived from it, so nothing
   resets at new year. Month trophies, Next to fall and the year heatmap stay
   calendar-scoped but include archive days that belong to the current month or
   year (1–3 January).
+- **Trend numbers: the last 30 days (`rollingWindows`).** Momentum, consistency,
+  power days, where habits break, vs best month and the Home habit percentages
+  compare the last 30 days up to yesterday (today never counts, like the
+  streak) with the 30 before. Days count from the first tick in the timeline
+  on; a window with fewer than 7 such days is null, and so is its delta. The
+  month bars and best month stay the sheet's own calendar-month counts.
 
 ### Environment variables (set in Vercel — do not hardcode)
 

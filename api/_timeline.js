@@ -3,8 +3,8 @@
 // The live sheet holds the current year-sheet's days; every earlier year
 // lives in a hidden "Archive <startyear>" tab that the sheet's own Start
 // new year menu writes before it clears the grid (see _archive.js). This
-// module merges them into one day list, so streaks, trends, focus counters
-// and trophies do not notice new year.
+// module merges them into one day list, so streaks, trends, focus counters,
+// the rolling 30-day windows and trophies do not notice new year.
 //
 //   - days are keyed by calendar date, each date once; the LIVE SHEET WINS
 //     when a date appears both in the sheet and in an archive
@@ -165,6 +165,34 @@ function focusTicks(tl, key, today, windowDays) {
   return n;
 }
 
+// ── the last 30 days ───────────────────────────────────────
+// "Now" is the ROLLING_DAYS days up to and including yesterday, "before" the
+// ROLLING_DAYS days ahead of those (day -60 to -31). Today never counts, like
+// the streak: a morning with nothing ticked yet must not drag the numbers
+// down, and the 1st of a month does not start from zero. The windows are
+// calendar days wherever they live, so they roll over month and year ends.
+//
+// A day is data from the first tick in the timeline on: a new customer's
+// sheet holds every date of the year, and the empty days before they started
+// are not days they missed. A window with fewer than MIN_WINDOW_DAYS such
+// days is too thin to say anything and comes back null.
+const ROLLING_DAYS = 30;
+const MIN_WINDOW_DAYS = 7;
+
+function rollingWindows(tl, today) {
+  const first = tl.days.find(d => d.ticks.size > 0);
+  const span = (back, upTo) => {
+    if (!first) return null;
+    const from = addDays(today, -back), to = addDays(today, -upTo);
+    const days = tl.days.filter(d => d.date >= from && d.date <= to && d.date >= first.date);
+    return days.length >= MIN_WINDOW_DAYS ? days : null;
+  };
+  return {
+    now:  span(ROLLING_DAYS, 1),
+    prev: span(2 * ROLLING_DAYS, ROLLING_DAYS + 1)
+  };
+}
+
 // ── weeks (Mon-Sun) from raw ticks ─────────────────────────
 // Percent of possible good-habit ticks in the week starting `monday`:
 // ticked / (habits x days the timeline has of that week). null for a week
@@ -233,6 +261,7 @@ function longestRun(tl, key) {
 
 module.exports = {
   habitKey, addDays, mondayOf, buildTimeline, archiveRoster,
-  daysOfYear, daysOfMonth, streakOf, focusTicks,
-  weekPercent, dayPercent, bestWeekEver, tickedIn, longestRun
+  daysOfYear, daysOfMonth, streakOf, focusTicks, rollingWindows,
+  weekPercent, dayPercent, bestWeekEver, tickedIn, longestRun,
+  ROLLING_DAYS, MIN_WINDOW_DAYS
 };

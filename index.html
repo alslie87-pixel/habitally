@@ -948,14 +948,15 @@
                    data.badCount < 30 ? '21 days. This is real change.' : 'Habit eliminated. New you.';
         renderFocus('bad', data.badFocus, data.badCount, data.badFocusFound, bMsg);
 
-        // Worst / Best
+        // Worst / Best: the last 30 days up to yesterday; null (and the
+        // cards stay at "—") while a new user has less than a week of data
         if (data.worst) {
           document.getElementById('worst-habit-name').textContent = data.worst.name;
-          document.getElementById('worst-habit-pct').textContent = data.worst.percent + '% this month';
+          document.getElementById('worst-habit-pct').textContent = data.worst.percent + '% last 30 days';
         }
         if (data.best) {
           document.getElementById('best-habit-name').textContent = data.best.name;
-          document.getElementById('best-habit-pct').textContent = data.best.percent + '% this month';
+          document.getElementById('best-habit-pct').textContent = data.best.percent + '% last 30 days';
         }
 
         // Habits overview: keep whichever list (good or bad) is showing, so a
@@ -1021,11 +1022,12 @@
       var listEl = document.getElementById('habits-overview-list');
       var sorted = (stats || []).slice().sort(function(a, b) { return b.percent - a.percent; });
       setHTML(listEl, sorted.map(function(h, i) {
-        var color = h.percent >= 70 ? 'var(--good-color)' : h.percent >= 50 ? 'var(--mid-color)' : 'var(--bad-color)';
+        // percent is null while there is less than a week of data
+        var color = h.percent == null ? 'var(--text-muted)' : h.percent >= 70 ? 'var(--good-color)' : h.percent >= 50 ? 'var(--mid-color)' : 'var(--bad-color)';
         var border = i < sorted.length - 1 ? 'border-bottom:1px solid var(--line);' : '';
         return '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;height:40px;' + border + '">' +
           '<span style="font-size:14px;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHtml(h.name) + '</span>' +
-          '<span style="font-size:14px;font-weight:700;color:' + color + ';font-variant-numeric:tabular-nums">' + h.percent + '%</span></div>';
+          '<span style="font-size:14px;font-weight:700;color:' + color + ';font-variant-numeric:tabular-nums">' + (h.percent == null ? '—' : h.percent + '%') + '</span></div>';
       }).join(''));
     }
 

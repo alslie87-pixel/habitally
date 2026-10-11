@@ -324,10 +324,12 @@
     if (UI.mi === null || UI.mi >= MV.length) UI.mi = MV.length - 1;
     const mi = UI.mi;
 
+    // now / delta are the last 30 days against the 30 before; null while a
+    // window is too thin (a new user), and then nothing is shown for them
     const H = (S.momentum || []).map(m => {
       const mx = (S.matrix || []).find(x => x.name === m.name);
       return {
-        n: m.name, p: m.now == null ? 0 : m.now, d: m.delta == null ? 0 : m.delta,
+        n: m.name, p: m.now, d: m.delta,
         s: (m.series && m.series.length > 1) ? m.series : [(m.now || 0), (m.now || 0)],
         b: m.bestStreak || 0, all: m.allTime || 0,
         row: mx ? mx.days.map(v => v == null ? 0 : v) : [0,0,0,0,0,0,0]
@@ -351,8 +353,8 @@
     const bestD = pd.indexOf(Math.max.apply(null, pd));
 
     const P = pal();
-    const bestPrev = curM > 0 ? Math.max.apply(null, MV.slice(0, curM)) : null;
-    const vsTile = bestPrev !== null ? ((MV[curM] - bestPrev >= 0 ? '+' : '−') + Math.abs(MV[curM] - bestPrev)) : '–';
+    // the last 30 days against the best completed month, in points
+    const vsTile = S.vsBest != null ? (S.vsBest >= 0 ? '+' : '−') + Math.abs(S.vsBest) : '–';
     const tiles = [
       { v: S.perfectDays, l: 'Perfect days', c: 'var(--text-primary)' },
       { v: (S.checksYTD || 0).toLocaleString(), l: 'Habit wins', c: 'var(--text-primary)' },
@@ -375,9 +377,18 @@
       momPath = 'M 0 ' + pts[0].y.toFixed(1) + ' L ' + line.slice(2) + ' L ' + cw + ' ' + pts[n-1].y.toFixed(1);
     }
     const momArea = momPath + ' L ' + cw + ' ' + base + ' L 0 ' + base + ' Z';
-    const dl = mi === 0 ? 0 : MV[mi] - MV[mi - 1];
-    const hSub = mi === 0 ? MONF[0] + ' · first month tracked'
-      : MONF[mi] + ' vs ' + MONF[mi - 1] + (mi === curM ? ' · ' + now.getDate() + ' days in' : '');
+    // The running month's point shows the last 30 days against the 30
+    // before (S.rolling), so the 1st of a month does not start from zero; a
+    // tapped earlier month shows that month against the one before it.
+    const roll = S.rolling || {};
+    const rDays = roll.days || 30;
+    const live = mi === MV.length - 1;
+    const hNum = live ? roll.good : MV[mi];
+    const dl = !live ? (mi === 0 ? 0 : MV[mi] - MV[mi - 1])
+      : (roll.good != null && roll.prevGood != null ? roll.good - roll.prevGood : null);
+    const hSub = live ? 'Last ' + rDays + ' days vs previous ' + rDays
+      : mi === 0 ? MONF[0] + ' · first month tracked'
+      : MONF[mi] + ' vs ' + MONF[mi - 1];
 
     const momSvg = `
       <svg width="100%" height="152" viewBox="0 0 ${cw} ${mh}" preserveAspectRatio="none" style="display:block">
@@ -422,7 +433,7 @@
           </div></div>`;
       }
       const col = h.d > 0 ? P.up : (h.d < 0 ? P.down : 'var(--text-muted)');
-      const dot = h.p >= 75 ? P.good : (h.p >= 55 ? P.gold : P.bad);
+      const dot = h.p == null ? 'var(--text-muted)' : (h.p >= 75 ? P.good : (h.p >= 55 ? P.gold : P.bad));
       return `<div style="border-bottom:1px solid var(--line)">
         <div data-open="${i}" style="display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:48px;cursor:pointer">
           <div style="display:flex;align-items:center;gap:10px;min-width:0">
@@ -430,8 +441,8 @@
             <div style="font:600 14px/1.4 Manrope;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(h.n)}</div>
           </div>
           <div style="display:flex;align-items:center;gap:12px;flex:none">
-            <div style="font:700 14px/1 Manrope;color:var(--text-primary);font-variant-numeric:tabular-nums">${h.p}%</div>
-            <div style="font:700 12px/1 Manrope;color:${col};min-width:36px;text-align:right">${h.d >= 0 ? '↑ ' : '↓ '}${Math.abs(h.d)}</div>
+            <div style="font:700 14px/1 Manrope;color:var(--text-primary);font-variant-numeric:tabular-nums">${h.p == null ? '–' : h.p + '%'}</div>
+            <div style="font:700 12px/1 Manrope;color:${col};min-width:36px;text-align:right">${h.d == null ? '' : (h.d >= 0 ? '↑ ' : '↓ ') + Math.abs(h.d)}</div>
           </div>
         </div>${spark}</div>`;
     }).join('');
@@ -535,8 +546,8 @@
       <div class="hsx-card" style="padding:18px 18px 16px">
         <div class="hsx-row"><div class="ink-k">Momentum</div><div class="hsx-k2">Monthly completion</div></div>
         <div style="display:flex;align-items:flex-end;gap:10px;margin-top:16px">
-          <div style="font:800 48px/0.95 Manrope;letter-spacing:-0.045em;color:var(--text-primary);font-variant-numeric:tabular-nums">${MV[mi]}<span style="font-size:20px;font-weight:700;margin-left:2px;color:var(--accent-text)">%</span></div>
-          <div style="display:flex;align-items:center;padding:5px 10px;border-radius:999px;font:700 12px Manrope;background:${al(dl >= 0 ? P.up : P.down, 0.13)};color:${dl >= 0 ? P.up : P.down};margin-bottom:6px">${dl >= 0 ? '↑ ' : '↓ '}${Math.abs(dl)} pts</div>
+          <div style="font:800 48px/0.95 Manrope;letter-spacing:-0.045em;color:var(--text-primary);font-variant-numeric:tabular-nums">${hNum == null ? '–' : hNum + '<span style="font-size:20px;font-weight:700;margin-left:2px;color:var(--accent-text)">%</span>'}</div>
+          ${dl == null ? '' : `<div style="display:flex;align-items:center;padding:5px 10px;border-radius:999px;font:700 12px Manrope;background:${al(dl >= 0 ? P.up : P.down, 0.13)};color:${dl >= 0 ? P.up : P.down};margin-bottom:6px">${dl >= 0 ? '↑ ' : '↓ '}${Math.abs(dl)} pts</div>`}
         </div>
         <div style="font:500 12.5px/1.3 Manrope;color:var(--text-secondary);margin:10px 0 8px">${hSub}</div>
         <div style="position:relative">${momSvg}</div>
@@ -544,7 +555,7 @@
       </div>
 
       <div class="hsx-card" style="padding:18px 18px 8px">
-        <div class="hsx-row"><div class="ink-k">Habit momentum</div><div class="hsx-k2">Vs ${curM > 0 ? MONF[curM-1] : 'last month'}</div></div>
+        <div class="hsx-row"><div class="ink-k">Habit momentum</div><div class="hsx-k2">Vs previous ${rDays} days</div></div>
         <div style="display:flex;flex-direction:column;margin-top:6px">${habitRows}</div>
       </div>
 
