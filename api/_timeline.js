@@ -131,8 +131,6 @@ function buildTimeline(monthGrids, slots, archives, today) {
 }
 
 const daysOfYear = (tl, year) => tl.days.filter(d => d.date.getFullYear() === year);
-const daysOfMonth = (tl, year, month) =>
-  tl.days.filter(d => d.date.getFullYear() === year && d.date.getMonth() === month);
 
 // ── streak ─────────────────────────────────────────────────
 // Consecutive days counting back from yesterday where at least THRESHOLD of
@@ -203,6 +201,25 @@ function monthWindow(tl, year, month, today) {
   return dataWindow(tl, new Date(year, month, 1), end < yesterday ? end : yesterday);
 }
 
+// The Momentum curve's months: the last CURVE_MONTHS calendar months, oldest
+// first, as [{ y, m, days }] with days = monthWindow (null for a month with
+// under a week of data, such as one before the first tick). The window ends
+// on the running month once that has a week of data, else on the month
+// before, so the 1st of a month never adds an empty point.
+const CURVE_MONTHS = 12;
+
+function curveMonths(tl, today) {
+  const back = (y, m) => (m > 0 ? [y, m - 1] : [y - 1, 11]);
+  let y = today.getFullYear(), m = today.getMonth();
+  if (!monthWindow(tl, y, m, today)) [y, m] = back(y, m);
+  const out = [];
+  for (let i = 0; i < CURVE_MONTHS; i++) {
+    out.unshift({ y, m, days: monthWindow(tl, y, m, today) });
+    [y, m] = back(y, m);
+  }
+  return out;
+}
+
 // ── weeks (Mon-Sun) from raw ticks ─────────────────────────
 // Percent of possible good-habit ticks in the week starting `monday`:
 // ticked / (habits x days the timeline has of that week). null for a week
@@ -271,7 +288,7 @@ function longestRun(tl, key) {
 
 module.exports = {
   habitKey, addDays, mondayOf, buildTimeline, archiveRoster,
-  daysOfYear, daysOfMonth, streakOf, focusTicks, rollingWindows, monthWindow,
+  daysOfYear, streakOf, focusTicks, rollingWindows, monthWindow, curveMonths,
   weekPercent, dayPercent, bestWeekEver, tickedIn, longestRun,
-  ROLLING_DAYS, MIN_WINDOW_DAYS
+  ROLLING_DAYS, MIN_WINDOW_DAYS, CURVE_MONTHS
 };

@@ -64,11 +64,14 @@ Guidance for Claude (and humans) working in this repo.
   Consistency card and the AVG lines show the same window's mean daily good-%
   (`rolling.good`, `weekdayAvg`, `weekendAvg`); the year heatmap keeps the
   whole year.
-- **The Momentum curve (`monthWindow`, `monthGood`).** Each month's point is
-  the mean daily good-% of its days up to yesterday, from the timeline by the
-  same rule, so the running month is drawn only from its 8th day on. vs best
-  month compares against these months. The sheet's own row-47 month counts
-  feed only `bestMonthEver`, which the page does not show.
+- **The Momentum curve (`curveMonths`, `monthGood`).** The last 12 calendar
+  months, archive tabs included, oldest first. Each point is the mean daily
+  good-% of its month's days up to yesterday, by the same rule, so months
+  before the first tick are not drawn and the running month only from its
+  8th day; until then the window ends on the month before. The habit
+  sparklines (`series`) use the same 12 months and rule, and vs best month
+  compares against the curve's completed months. The sheet's own row-47 month
+  counts feed only `bestMonthEver`, which the page does not show.
 
 ### Environment variables (set in Vercel — do not hardcode)
 
