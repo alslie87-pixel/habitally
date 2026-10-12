@@ -266,15 +266,25 @@ test('Power days: a weekday without data shows "–", has no bar and is never th
   assert.equal(bestPill(html), null);
 });
 
-test('equal weekdays and weekends read "Weekdays and weekends even"', async () => {
+test('equal weekdays and weekends read "Even all week" in the muted colour; dip and lift keep theirs', async () => {
   const grids = buildYear(2026);
   tickDays(grids, at(2026, 8, 1), at(2026, 9, 10), () => [EXERCISE, READ]); // 100% every day
   state.monthGrids = grids; state.archives = {};
+  const dipLiftColor = html => one(card(html, 'Consistency'), /color:([^;]*);white-space:nowrap">/);
 
   const html = await renderInsights('2026-10-11');
   assert.equal(weekdays(html), '100%');
   assert.equal(weekends(html), '100%');
-  assert.equal(dipLift(html), 'Weekdays and weekends even');
+  assert.equal(dipLift(html), 'Even all week');
+  assert.equal(dipLiftColor(html), 'var(--text-muted)');
+
+  // the dark palette (the sandbox has no light class): lift in up green, dip in bad pink
+  const lift = await renderInsights('2026-10-11', S => { S.weekdayAvg = 60; S.weekendAvg = 75; });
+  assert.equal(dipLift(lift), 'Weekend lift · 15 pts');
+  assert.equal(dipLiftColor(lift), '#8FE0B0');
+  const dip = await renderInsights('2026-10-11', S => { S.weekdayAvg = 75; S.weekendAvg = 60; });
+  assert.equal(dipLift(dip), 'Weekend dip · 15 pts');
+  assert.equal(dipLiftColor(dip), '#FF8E80');
 });
 
 test('1 January with December in the archive: the Consistency card shows the last 30 days, not 0', async () => {

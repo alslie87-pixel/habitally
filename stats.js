@@ -602,7 +602,7 @@
               <div style="display:flex;align-items:baseline;justify-content:space-between"><div style="font:600 12.5px Manrope;color:var(--text-secondary)">Weekends</div><div style="font:800 15px Manrope;color:var(--text-primary)">${wkend == null ? '–' : wkend + '%'}</div></div>
               <div style="height:6px;border-radius:999px;background:var(--track);overflow:hidden"><div style="width:${wkend || 0}%;height:100%;border-radius:999px;background:${P.bad}"></div></div>
             </div>
-            <div style="font:600 12px/1.4 Manrope;color:${wkGap == null ? 'var(--text-muted)' : wkGap > 0 ? P.bad : P.up};white-space:nowrap">${wkGap == null ? '–' : wkGap > 0 ? 'Weekend dip · ' + wkGap + ' pts' : wkGap < 0 ? 'Weekend lift · ' + Math.abs(wkGap) + ' pts' : 'Weekdays and weekends even'}</div>
+            <div style="font:600 12px/1.4 Manrope;color:${wkGap == null || wkGap === 0 ? 'var(--text-muted)' : wkGap > 0 ? P.bad : P.up};white-space:nowrap">${wkGap == null ? '–' : wkGap > 0 ? 'Weekend dip · ' + wkGap + ' pts' : wkGap < 0 ? 'Weekend lift · ' + Math.abs(wkGap) + ' pts' : 'Even all week'}</div>
           </div>
         </div>
       </div>
