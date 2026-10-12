@@ -20,8 +20,9 @@ const CP = require('./_controlPanel');
 //   time, and the current year's numbers include archive days that belong
 //   to it (1-3 January live in the previous sheet's archive). The trend
 //   numbers (momentum, consistency, power days, where habits break, vs best
-//   month) read the last 30 days up to yesterday, never the month so far,
-//   and the Momentum curve's months stop at yesterday too.
+//   month) read the last 30 days up to yesterday, never the month so far;
+//   the Momentum curve and the habit sparklines show the last 12 months,
+//   across the year, and stop at yesterday too.
 // Control Panel: habit slots and the Z1 marker — see _controlPanel.js.
 
 const MONTHS = ["January","February","March","April","May","June",
@@ -173,18 +174,22 @@ module.exports = async (req, res) => {
       return { name: h.name, type: h.type, days };
     });
 
-    // ── the month curve ──────────────────────────────────────
-    // Every month of the current year from the timeline: the mean daily
-    // good-% of its days up to yesterday, from the first tick on. A month
-    // with fewer than 7 such days is null (the running month's first week,
-    // a new user's first days), so the curve ends on the month before.
-    const monthGood = [];
-    for (let m = 0; m <= curMonth; m++) monthGood.push(pct(goodIn(TL.monthWindow(tl, curYear, m, today))));
+    // ── the month curve: the last 12 months ─────────────────
+    // [{ y, m, good }], oldest first, from the timeline with the archive tabs:
+    // the mean daily good-% of each month's days up to yesterday, from the
+    // first tick on. A month with fewer than 7 such days is null and not
+    // drawn (months before the first tick, the running month's first week),
+    // and the window ends on the month before until the running month has
+    // its week (_timeline.js curveMonths).
+    const curve = TL.curveMonths(tl, today);
+    const monthGood = curve.map(c => ({ y: c.y, m: c.m, good: pct(goodIn(c.days)) }));
 
     // Vs best month: the last 30 days against the best COMPLETED month of
     // that curve, in points. The running month is still filling up, so it
     // is never the bar to beat.
-    const doneGood = monthGood.slice(0, curMonth).filter(g => g !== null);
+    const doneGood = monthGood
+      .filter(p => p.good !== null && !(p.y === curYear && p.m === curMonth))
+      .map(p => p.good);
     const vsBest = (rollingGood !== null && doneGood.length) ? rollingGood - Math.max(...doneGood) : null;
 
     // ── habit momentum + all-time ────────────────────────────
@@ -196,12 +201,9 @@ module.exports = async (req, res) => {
     const momentum = active.map(h => {
       const nowP  = pctIn(win.now, h.key);
       const prevP = pctIn(win.prev, h.key);
-      // per-habit monthly series (Jan..current, of the current year)
-      const series = [];
-      for (let m = 0; m <= curMonth; m++) {
-        const p = pctIn(TL.daysOfMonth(tl, curYear, m), h.key);
-        series.push(p !== null ? Math.round(p * 100) : 0);
-      }
+      // per-habit sparkline: the curve's 12 months by the same rule, null
+      // where the curve has no point
+      const series = curve.map(c => pct(pctIn(c.days, h.key)));
       return {
         name: h.name, type: h.type,
         now: nowP !== null ? Math.round(nowP * 100) : null,

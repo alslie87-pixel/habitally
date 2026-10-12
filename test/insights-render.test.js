@@ -70,17 +70,31 @@ async function stats(dateStr) {
 const script = new vm.Script(fs.readFileSync(path.join(__dirname, '..', 'stats.js'), 'utf8'),
   { filename: 'stats.js' });
 
+// querySelectorAll('[data-x]') hands back one stub per data-x="..." in the
+// element's own HTML and keeps the click handler render() binds to it, so
+// a test can tap what was drawn.
 function element() {
-  return {
-    id: '', className: '', innerHTML: '', textContent: '', scrollTop: 0, style: {}, dataset: {},
+  const el = {
+    id: '', className: '', innerHTML: '', textContent: '', scrollTop: 0, style: {}, dataset: {}, taps: {},
     classList: { add() {}, remove() {}, toggle() {}, contains: () => false },
     appendChild: child => child, addEventListener() {},
-    querySelector: () => null, querySelectorAll: () => []
+    querySelector: () => null,
+    querySelectorAll(sel) {
+      const attr = (/^\[data-([a-z]+)\]$/.exec(sel) || [])[1];
+      if (!attr) return [];
+      return Array.from(el.innerHTML.matchAll(new RegExp('data-' + attr + '="([^"]*)"', 'g')), m => ({
+        dataset: { [attr]: m[1] },
+        addEventListener: (type, fn) => { el.taps[attr + '=' + m[1]] = fn; }
+      }));
+    }
   };
+  return el;
 }
 
-// Opens Insights on the given local date and returns the HTML it renders.
-async function renderInsights(dateStr) {
+// Opens Insights on the given local date. patch(S), if given, edits the
+// get-stats payload before the page sees it. Returns { html(), tap(attr,
+// value) }; a tap re-renders and returns the new HTML.
+async function openInsights(dateStr, patch) {
   const [y, m, d] = dateStr.split('-').map(Number);
   const noon = new Date(y, m - 1, d, 12).getTime();
   class FixedDate extends Date {
@@ -106,6 +120,7 @@ async function renderInsights(dateStr) {
       const res = fakeRes();
       const query = Object.fromEntries(new URL(url, 'http://localhost').searchParams);
       await getStats({ method: 'GET', query }, res);
+      if (patch) patch(res.body);
       return { ok: res.statusCode === 200, status: res.statusCode, json: async () => res.body };
     }
   };
@@ -118,8 +133,12 @@ async function renderInsights(dateStr) {
   // the first render shows "Loading…", then the fetch lands and it renders again
   for (let i = 0; i < 100 && !panel.innerHTML.includes('hsx-tiles'); i++) await new Promise(r => setImmediate(r));
   assert.ok(panel.innerHTML.includes('hsx-tiles'), 'Insights did not render');
-  return panel.innerHTML;
+  return {
+    html: () => panel.innerHTML,
+    tap: (attr, value) => { panel.taps[attr + '=' + value](); return panel.innerHTML; }
+  };
 }
+const renderInsights = async (dateStr, patch) => (await openInsights(dateStr, patch)).html();
 
 // One card of the page, by its label.
 function card(html, title) {
@@ -137,6 +156,26 @@ const powerAvg  = html => one(card(html, 'Power days'), />AVG ([^<]*)</);
 const headline  = html => one(card(html, 'Momentum'), /48px\/0\.95 Manrope[^"]*">([^<]*)/);
 const curveMonths = html => (card(html, 'Momentum').match(/>(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)<\/div>/g) || [])
   .map(s => s.slice(1, 4));
+
+// Power days lanes in drawn order: [{ day, value, bar }], bar = whether the
+// lane has a track and a bar at all.
+function powerLanes(html) {
+  const c = card(html, 'Power days');
+  const WDS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const days = Array.from(c.matchAll(/letter-spacing:0\.04em;color:[^;]*;pointer-events:none">(\w{3})</g), m => m[1]);
+  const values = Array.from(c.matchAll(/font:800 12\.5px\/1 Manrope;color:[^;]*;pointer-events:none">([^<]*)</g), m => m[1]);
+  const bar = {};
+  for (const m of c.matchAll(/<g data-pd="(\d)"[\s\S]*?<\/g>/g)) bar[WDS[+m[1]]] = m[0].includes('var(--track)');
+  return days.map((day, i) => ({ day, value: values[i], bar: bar[day] }));
+}
+const bestPill = html => one(card(html, 'Power days'), /(Best · [^<]*)</);
+
+// Points in the open habit row's sparkline: its path is "M x y" plus one
+// " C ..." per further point.
+const sparkPoints = html => {
+  const d = one(card(html, 'Habit momentum'), /<path d="(M [^"]*)" fill="none" stroke="[^"]*" stroke-width="2"/);
+  return d ? (d.match(/ C /g) || []).length + 1 : 0;
+};
 
 // ── the fixture ────────────────────────────────────────────
 
@@ -169,9 +208,83 @@ test('the 1st and the 7th draw no point for the running month; the 8th does', as
   const html = await renderInsights('2026-10-08');
   assert.deepEqual(curveMonths(html), ['Jun', 'Jul', 'Aug', 'Sep', 'Oct']);
   const S = await stats('2026-10-08');
-  assert.equal(S.monthGood[9], 100); // the October point: Oct 1-7 from the timeline
+  assert.deepEqual(S.monthGood[11], { y: 2026, m: 9, good: 100 }); // Oct 1-7 from the timeline
   // the headline is the last 30 days, not the October point
   assert.equal(headline(html), String(S.rolling.good));
+});
+
+test('in January the curve shows last year out of the archive: Jan-Dec on the 5th, Feb-Jan on the 8th', async () => {
+  // the 2027 sheet starts on Jan 4; 2026 and Jan 1-3 2027 live in "Archive 2026"
+  const grids = buildYear(2027);
+  tickDays(grids, at(2027, 0, 4), at(2027, 0, 7), () => [EXERCISE]);
+  state.monthGrids = grids;
+  state.archives = { 2026: buildArchive(2026,
+    [{ slot: 0, name: 'No sugar' }, { slot: 7, name: 'Exercise' }, { slot: 8, name: 'Read' }],
+    (d, slot) => d >= at(2026, 0, 1) && slot === 7) };
+
+  assert.deepEqual(curveMonths(await renderInsights('2027-01-05')),
+    ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']);
+  assert.deepEqual(curveMonths(await renderInsights('2027-01-08')),
+    ['Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan']);
+});
+
+test('a habit sparkline has no point for the running month on the 1st, and one on the 8th', async () => {
+  state.monthGrids = year2026(); state.archives = {};
+  for (const [date, points] of [['2026-10-01', 4], ['2026-10-08', 5]]) { // Jun..Sep, then Jun..Oct
+    const page = await openInsights(date);
+    assert.equal(sparkPoints(page.html()), 0, 'no row open yet');
+    assert.equal(sparkPoints(page.tap('open', '2')), points, date); // open Read
+  }
+});
+
+test('Power days: a weekday without data shows "–", has no bar and is never the best', async () => {
+  state.monthGrids = year2026(); state.archives = {};
+
+  // Monday and Thursday without data (patched into the real payload)
+  let html = await renderInsights('2026-10-11', S => { S.weekday = [null, 45, 80, null, 60, 30, 20]; });
+  assert.deepEqual(powerLanes(html), [
+    { day: 'Wed', value: '80%', bar: true },
+    { day: 'Fri', value: '60%', bar: true },
+    { day: 'Tue', value: '45%', bar: true },
+    { day: 'Sat', value: '30%', bar: true },
+    { day: 'Sun', value: '20%', bar: true },
+    { day: 'Mon', value: '–', bar: false },
+    { day: 'Thu', value: '–', bar: false }
+  ]);
+  assert.equal(bestPill(html), 'Best · Wed 80%');
+
+  // even when every weekday with data is at 0%, the empty Monday is not the best
+  html = await renderInsights('2026-10-11', S => { S.weekday = [null, 0, 0, 0, 0, 0, 0]; });
+  assert.equal(bestPill(html), 'Best · Tue 0%');
+
+  // a new user's first week: no weekday has data, so there is no best at all
+  const grids = buildYear(2026);
+  tickDays(grids, at(2026, 9, 5), at(2026, 9, 10), () => [EXERCISE, NO_SUGAR]); // Oct 5-10
+  state.monthGrids = grids;
+  html = await renderInsights('2026-10-11');
+  powerLanes(html).forEach(l => assert.deepEqual([l.value, l.bar], ['–', false], l.day));
+  assert.equal(bestPill(html), null);
+});
+
+test('equal weekdays and weekends read "Even all week" in the muted colour; dip and lift keep theirs', async () => {
+  const grids = buildYear(2026);
+  tickDays(grids, at(2026, 8, 1), at(2026, 9, 10), () => [EXERCISE, READ]); // 100% every day
+  state.monthGrids = grids; state.archives = {};
+  const dipLiftColor = html => one(card(html, 'Consistency'), /color:([^;]*);white-space:nowrap">/);
+
+  const html = await renderInsights('2026-10-11');
+  assert.equal(weekdays(html), '100%');
+  assert.equal(weekends(html), '100%');
+  assert.equal(dipLift(html), 'Even all week');
+  assert.equal(dipLiftColor(html), 'var(--text-muted)');
+
+  // the dark palette (the sandbox has no light class): lift in up green, dip in bad pink
+  const lift = await renderInsights('2026-10-11', S => { S.weekdayAvg = 60; S.weekendAvg = 75; });
+  assert.equal(dipLift(lift), 'Weekend lift · 15 pts');
+  assert.equal(dipLiftColor(lift), '#8FE0B0');
+  const dip = await renderInsights('2026-10-11', S => { S.weekdayAvg = 75; S.weekendAvg = 60; });
+  assert.equal(dipLift(dip), 'Weekend dip · 15 pts');
+  assert.equal(dipLiftColor(dip), '#FF8E80');
 });
 
 test('1 January with December in the archive: the Consistency card shows the last 30 days, not 0', async () => {
@@ -187,7 +300,9 @@ test('1 January with December in the archive: the Consistency card shows the las
   assert.equal(weekdays(html), '100%');
   assert.equal(weekends(html), '50%');
   assert.equal(dipLift(html), 'Weekend dip · 50 pts');
-  assert.deepEqual(curveMonths(html), []); // no January point yet, and no line
+  // no January point yet, so the curve is the year before: from November,
+  // the first tick
+  assert.deepEqual(curveMonths(html), ['Nov', 'Dec']);
   assert.equal(headline(html), '83');
 });
 

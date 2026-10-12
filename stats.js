@@ -318,12 +318,17 @@
     const yr = now.getFullYear();
     const cw = 500;
 
-    // The Momentum curve: each month of the year from the timeline
-    // (S.monthGood). A month with under a week of data is null and left out,
-    // so in a month's first week the curve ends on the month before.
-    const curve = (S.monthGood || []).map((v, m) => ({ m, v })).filter(p => p.v != null);
-    const MV = curve.map(p => p.v);
+    // The Momentum curve: the last 12 months from the timeline (S.monthGood,
+    // oldest first, archive tabs included). A month with under a week of
+    // data is null and left out: months before the first tick, and the
+    // running month's first week, so then the curve ends on the month before.
+    const months12 = S.monthGood || [];
+    const curve = months12.filter(p => p.good != null);
+    const MV = curve.map(p => p.good);
     const single = MV.length === 1;
+    // the oldest point is where tracking began only when untracked months
+    // come before it in the window
+    const firstTracked = months12.length > 0 && months12[0].good == null;
     // until a month is tapped the latest point is the selected one
     const mi = (UI.mi === null || UI.mi >= MV.length) ? MV.length - 1 : UI.mi;
 
@@ -335,9 +340,11 @@
     // window is too thin (a new user), and then nothing is shown for them
     const H = (S.momentum || []).map(m => {
       const mx = (S.matrix || []).find(x => x.name === m.name);
+      // the sparkline: the habit on the curve's months, by the curve's rule
+      const s = (m.series || []).filter(v => v != null);
       return {
         n: m.name, p: m.now, d: m.delta,
-        s: (m.series && m.series.length > 1) ? m.series : [(m.now || 0), (m.now || 0)],
+        s: s.length > 1 ? s : [(m.now || 0), (m.now || 0)],
         b: m.bestStreak || 0, all: m.allTime || 0,
         row: mx ? mx.days.map(v => v == null ? 0 : v) : [0,0,0,0,0,0,0]
       };
@@ -353,9 +360,11 @@
     const wkday = S.weekdayAvg, wkend = S.weekendAvg;
     const wkGap = (wkday == null || wkend == null) ? null : wkday - wkend;
 
-    const pd = (S.weekday || []).map(v => v == null ? 0 : v);
-    while (pd.length < 7) pd.push(0);
-    const bestD = pd.indexOf(Math.max.apply(null, pd));
+    // Power days: a weekday without data stays null, shows "–" without a bar
+    // and is never the best (-1 when no weekday has data)
+    const pd = (S.weekday || []).slice(0, 7);
+    while (pd.length < 7) pd.push(null);
+    const bestD = pd.reduce((b, v, i) => (v != null && (b < 0 || v > pd[b]) ? i : b), -1);
 
     const P = pal();
     // the last 30 days against the best completed month, in points
@@ -411,13 +420,14 @@
     }
     // The latest point shows the last 30 days against the 30 before
     // (S.rolling), so the 1st of a month does not start from zero; a tapped
-    // earlier month shows that month against the one before it.
+    // earlier month shows that month against the one before it. The oldest
+    // point has nothing before it in the window, so no delta.
     const live = mi === MV.length - 1;
     const hNum = live ? roll.good : MV[mi];
-    const dl = !live ? (mi === 0 ? 0 : MV[mi] - MV[mi - 1])
+    const dl = !live ? (mi === 0 ? null : MV[mi] - MV[mi - 1])
       : (roll.good != null && roll.prevGood != null ? roll.good - roll.prevGood : null);
     const hSub = live ? 'Last ' + rDays + ' days vs previous ' + rDays
-      : mi === 0 ? MONF[curve[0].m] + ' · first month tracked'
+      : mi === 0 ? MONF[curve[0].m] + (firstTracked ? ' · first month tracked' : '')
       : MONF[curve[mi].m] + ' vs ' + MONF[curve[mi - 1].m];
 
     /* habit momentum */
@@ -462,7 +472,8 @@
     /* power days */
     const sel = UI.pd == null ? bestD : UI.pd;
     const tX = 40, tW = cw - 96, rowH = 34, pdH = 7 * rowH;
-    const lanes = pd.map((val, i) => ({ i, val })).sort((a, b) => b.val - a.val).map((o, ri) => {
+    const rank = v => (v == null ? -1 : v); // weekdays without data sort last
+    const lanes = pd.map((val, i) => ({ i, val })).sort((a, b) => rank(b.val) - rank(a.val)).map((o, ri) => {
       const y = ri * rowH + 4;
       return { i: o.i, val: o.val, y, isB: o.i === bestD, isS: o.i === sel };
     });
@@ -591,14 +602,14 @@
               <div style="display:flex;align-items:baseline;justify-content:space-between"><div style="font:600 12.5px Manrope;color:var(--text-secondary)">Weekends</div><div style="font:800 15px Manrope;color:var(--text-primary)">${wkend == null ? '–' : wkend + '%'}</div></div>
               <div style="height:6px;border-radius:999px;background:var(--track);overflow:hidden"><div style="width:${wkend || 0}%;height:100%;border-radius:999px;background:${P.bad}"></div></div>
             </div>
-            <div style="font:600 12px/1.4 Manrope;color:${wkGap == null ? 'var(--text-muted)' : wkGap > 0 ? P.bad : P.up};white-space:nowrap">${wkGap == null ? '–' : wkGap > 0 ? 'Weekend dip · ' + wkGap + ' pts' : 'Weekend lift · ' + Math.abs(wkGap) + ' pts'}</div>
+            <div style="font:600 12px/1.4 Manrope;color:${wkGap == null || wkGap === 0 ? 'var(--text-muted)' : wkGap > 0 ? P.bad : P.up};white-space:nowrap">${wkGap == null ? '–' : wkGap > 0 ? 'Weekend dip · ' + wkGap + ' pts' : wkGap < 0 ? 'Weekend lift · ' + Math.abs(wkGap) + ' pts' : 'Even all week'}</div>
           </div>
         </div>
       </div>
 
       <div class="hsx-card" style="padding:18px 18px 12px">
         <div class="hsx-row"><div class="ink-k">Power days</div>
-          <div style="padding:5px 10px;border-radius:999px;background:${sel === bestD ? al(P.gold, 0.13) : al(P.acc, 0.13)};font:700 11.5px Manrope;color:${sel === bestD ? P.gold : P.accT}">${UI.pd == null ? 'Best · ' : ''}${WD[sel]} ${pd[sel]}%</div>
+          ${sel < 0 ? '' : `<div style="padding:5px 10px;border-radius:999px;background:${sel === bestD ? al(P.gold, 0.13) : al(P.acc, 0.13)};font:700 11.5px Manrope;color:${sel === bestD ? P.gold : P.accT}">${UI.pd == null ? 'Best · ' : ''}${WD[sel]} ${pd[sel] == null ? '–' : pd[sel] + '%'}</div>`}
         </div>
         <div style="position:relative;height:13px;margin-top:16px">
           ${avgX == null ? '' : `<div style="position:absolute;left:${(avgX / cw * 100).toFixed(1)}%;top:0;transform:translateX(-50%);font:700 9px/1 Manrope;letter-spacing:0.14em;color:var(--text-muted);white-space:nowrap">AVG ${score}</div>`}
@@ -608,12 +619,12 @@
             ${avgX == null ? '' : `<line x1="${avgX.toFixed(1)}" y1="0" x2="${avgX.toFixed(1)}" y2="${pdH}" stroke="var(--hxAvg)" stroke-dasharray="2 4"/>`}
             ${lanes.map(o => `<g data-pd="${o.i}" style="cursor:pointer">
               <rect x="0" y="${o.y - 11}" width="${cw}" height="${rowH}" fill="transparent"/>
-              <rect x="${tX}" y="${o.y}" width="${tW.toFixed(1)}" height="12" rx="6" fill="var(--track)"/>
-              <rect x="${tX}" y="${o.y}" width="${(tW * o.val / 100).toFixed(1)}" height="12" rx="6" fill="${o.isB ? P.gold : (o.isS ? P.accT : al(P.acc, 0.45))}"/>
+              ${o.val == null ? '' : `<rect x="${tX}" y="${o.y}" width="${tW.toFixed(1)}" height="12" rx="6" fill="var(--track)"/>
+              <rect x="${tX}" y="${o.y}" width="${(tW * o.val / 100).toFixed(1)}" height="12" rx="6" fill="${o.isB ? P.gold : (o.isS ? P.accT : al(P.acc, 0.45))}"/>`}
             </g>`).join('')}
           </svg>
           ${lanes.map(o => `<div style="position:absolute;left:0;top:${((o.y + 6) / pdH * 100).toFixed(1)}%;transform:translateY(-50%);font:700 11.5px/1 Manrope;letter-spacing:0.04em;color:${o.isB || o.isS ? 'var(--text-primary)' : 'var(--text-muted)'};pointer-events:none">${WD[o.i]}</div>`).join('')}
-          ${lanes.map(o => `<div style="position:absolute;right:0;top:${((o.y + 6) / pdH * 100).toFixed(1)}%;transform:translateY(-50%);font:800 12.5px/1 Manrope;color:${o.isB ? P.gold : (o.isS ? P.accT : 'var(--text-secondary)')};pointer-events:none">${o.val}%</div>`).join('')}
+          ${lanes.map(o => `<div style="position:absolute;right:0;top:${((o.y + 6) / pdH * 100).toFixed(1)}%;transform:translateY(-50%);font:800 12.5px/1 Manrope;color:${o.isB ? P.gold : (o.isS ? P.accT : 'var(--text-secondary)')};pointer-events:none">${o.val == null ? '–' : o.val + '%'}</div>`).join('')}
         </div>
       </div>
 
