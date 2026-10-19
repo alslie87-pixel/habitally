@@ -1,10 +1,10 @@
 const { google } = require('googleapis');
 const { resolveSheetId } = require('./_user');
 const { todayFrom } = require('./_date');
-const { serialToDate, isChecked, FOCUS_WINDOW_DAYS } = require('./_streak');
+const { serialToDate, isChecked, isoOf, FOCUS_WINDOW_DAYS } = require('./_streak');
 const { sheetEndFromGrids, yearState, outOfYearPayload } = require('./_year');
 const { computeTrophiesForYear } = require('./_trophies');
-const { findCurrentWeek } = require('./_week');
+const { findCurrentWeek, dayWindow, isoWeek } = require('./_week');
 const { readArchives } = require('./_archive');
 const TL = require('./_timeline');
 const CP = require('./_controlPanel');
@@ -129,49 +129,52 @@ module.exports = async (req, res) => {
     // The week that contains today is not always in today's tab: the sheet
     // moves a trailing partial week into the NEXT month's tab, and in the
     // first days of January the live week can still be December's week 5
-    // (see _week.js). The tab the week is found in is what the calendar
-    // shows and what ticks are written to.
+    // (see _week.js). This Monday-Sunday week is what the weekly numbers
+    // count and where weakest/signal are read; the strip below rolls.
     const wk = findCurrentWeek(monthGrids, today);
     const weekGrid = monthGrids[wk.monthIdx] || [];
     const weekSheetName = monthNames[wk.monthIdx];
 
     const weekRow = wk.weekRow;
 
-    // ── 4. BUILD CALENDAR WEEK ───────────────────────────────
-    const days = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
-    const weekData = [];
-
-    for (let d = 0; d < 7; d++) {
-      const row = weekRow + d;
-      if (!weekGrid[row]) continue;
-      const dateVal = serialToDate(weekGrid[row][1]);
-
-      const dayData = {
-        day:     days[d],
-        date:    dateVal ? dateVal.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '',
-        row:     row + 1,
-        isToday: dateVal ? dateVal.getTime() === today.getTime() : false,
-        bad:     [],
-        good:    []
-      };
-
-      activeBad.forEach(h => {
-        dayData.bad.push({
-          name:    h.name,
-          checked: isChecked(weekGrid[row][h.colIndex]),
-          col:     h.colIndex + 1
-        });
-      });
-      activeGood.forEach(h => {
-        dayData.good.push({
-          name:    h.name,
-          checked: isChecked(weekGrid[row][h.colIndex]),
-          col:     h.colIndex + 1
-        });
-      });
-
-      weekData.push(dayData);
+    // ── 4. BUILD THE WEEK STRIP ──────────────────────────────
+    // A rolling window, three days either side of today, so yesterday is
+    // always on screen — on a Monday too. The window can reach over a
+    // Sunday-Monday boundary into the previous or next month tab, so every
+    // day carries its own tab and row (see dayWindow in _week.js). The
+    // Monday carries its ISO week number for the divider the app draws
+    // before it.
+    const dayNames = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    const strip = dayWindow(monthGrids, today);
+    if (!strip.length) {
+      // today lies before the sheet's first date, which the rollover never
+      // leads to: show the week findCurrentWeek fell back to, so the habit
+      // lists the app reads from week[0] are never empty
+      for (let d = 0; d < 7; d++) {
+        const date = weekGrid[weekRow + d] ? serialToDate(weekGrid[weekRow + d][1]) : null;
+        if (date) strip.push({ date, monthIdx: wk.monthIdx, row: weekRow + d });
+      }
     }
+
+    const weekData = strip.map(({ date, monthIdx, row }) => {
+      const cells = monthGrids[monthIdx][row];
+      const chip = h => ({
+        name:    h.name,
+        checked: isChecked(cells[h.colIndex]),
+        col:     h.colIndex + 1
+      });
+      return {
+        day:       dayNames[date.getDay()],
+        date:      date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        iso:       isoOf(date),
+        sheetName: monthNames[monthIdx],
+        row:       row + 1,
+        isToday:   date.getTime() === today.getTime(),
+        isoWeek:   date.getDay() === 1 ? isoWeek(date) : null,
+        bad:       activeBad.map(chip),
+        good:      activeGood.map(chip)
+      };
+    });
 
     // ── 5. THE TIMELINE ──────────────────────────────────────
     const tl = TL.buildTimeline(monthGrids, slots, archives, today);

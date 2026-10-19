@@ -202,7 +202,12 @@
     .habit-chip.is-on { background: var(--chip-on); color: #FFFFFF; }
     .habit-chip.bad:not(.is-on) { background: var(--bad-bg); color: var(--bad-color); }
     .habit-chip.good:not(.is-on) { background: var(--bg-inner); color: var(--text-secondary); }
-    @media (min-width: 768px) { .day-card { width: auto; } }
+    /* the line between Sunday and Monday, a flex item like the cards, with
+       the new week's number sitting on its top end */
+    .week-divider { position: relative; flex: none; align-self: stretch; width: 3px; border-radius: 3px; background: var(--accent); }
+    .week-divider span { position: absolute; top: 0; left: 50%; transform: translate(-50%, -50%); padding: 0 4px; white-space: nowrap; line-height: 1;
+                         font-size: 9px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); background: var(--bg-page); }
+    @media (min-width: 768px) { .day-card { width: auto; flex: 1 1 0; min-width: 0; } }
 
     /* next to fall */
     .ntf-tile { height: 16px; border-radius: 4px; box-sizing: border-box; }
@@ -433,8 +438,8 @@
             <span style="color:var(--good-color)">+</span><span style="color:var(--bad-color)">−</span>
           </button>
         </div>
-        <div class="calendar-scroll overflow-x-auto md:overflow-visible -mr-4 md:mr-0 pt-3 pb-2">
-          <div id="calendar-grid" class="flex gap-2.5 min-w-max pr-4 md:pr-0 md:min-w-0 md:grid md:grid-cols-7"></div>
+        <div class="calendar-scroll overflow-x-auto md:overflow-visible -ml-4 -mr-4 md:ml-0 md:mr-0 pt-3 pb-2">
+          <div id="calendar-grid" class="flex gap-2.5 min-w-max pl-4 pr-4 md:pl-0 md:pr-0 md:min-w-0"></div>
         </div>
       </div>
 
@@ -1067,7 +1072,9 @@
     // ── CALENDAR ──────────────────────────────────────────
     // Chip colours live in CSS (.habit-chip.is-on / .bad / .good), so a tap
     // only flips a class and the theme never has to be read here.
-    var calendarCentered = false;
+    // the date today was last centred for: the first paint centres it, and
+    // so does the first paint after the date moves on under an open app
+    var calendarCenteredOn = '';
 
     // the API sends "Sep 24"; the card shows the day number, the month is in the greeting
     function dayNumber(d) {
@@ -1075,20 +1082,29 @@
       return m ? m[1] : String(d || '');
     }
 
-    function chipHTML(data, day, habit, type) {
+    // a tap sends the card's date; the server finds the tab and row for it
+    function chipHTML(day, habit, type) {
       var on = habit.checked === true;
       var icon = on ? '\u2713' : (type === 'bad' ? '\u2717' : '\u25CB');
       return '<button type="button" class="habit-chip ' + type + (on ? ' is-on' : '') + '"' +
-        ' data-sheet="' + escapeHtml(data.sheetName) + '" data-row="' + day.row + '" data-col="' + habit.col + '"' +
+        ' data-date="' + escapeHtml(day.iso) + '" data-col="' + habit.col + '"' +
         ' data-checked="' + on + '" data-type="' + type + '" aria-pressed="' + on + '">' +
         '<span class="chip-icon" aria-hidden="true">' + icon + '</span><span class="chip-name">' + escapeHtml(habit.name) + '</span></button>';
     }
 
+    // drawn straight before a Monday card; the API sets isoWeek on Mondays only
+    function weekDividerHTML(day) {
+      var w = (day.isoWeek < 10 ? '0' : '') + day.isoWeek;
+      return '<div class="week-divider" role="separator" aria-label="Week ' + day.isoWeek + '"><span aria-hidden="true">W' + w + '</span></div>';
+    }
+
+    // The strip is a rolling window, three days either side of today.
     function renderCalendar(data) {
       var grid = document.getElementById('calendar-grid');
       var html = data.week.map(function (day) {
         var isToday = day.isToday;
-        return '<div class="day-card' + (isToday ? ' today' : '') + '">' +
+        return (day.isoWeek ? weekDividerHTML(day) : '') +
+          '<div class="day-card' + (isToday ? ' today' : '') + '">' +
           '<div style="display:flex;justify-content:space-between;align-items:flex-start;padding:0 2px 4px">' +
             '<div style="display:flex;flex-direction:column;gap:2px">' +
               '<div style="font-size:10.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:' + (isToday ? 'var(--accent-text)' : 'var(--text-secondary)') + '">' + escapeHtml(day.day.slice(0, 3)) + '</div>' +
@@ -1097,26 +1113,28 @@
             (isToday ? '<div class="today-tag" style="font-size:9.5px;font-weight:800;letter-spacing:.12em;color:var(--bad-color);animation:today-pulse 2s ease-in-out infinite">TODAY</div>' : '') +
           '</div>' +
           '<div class="day-lbl" style="color:var(--bad-color)">Avoid</div>' +
-          day.bad.map(function (h) { return chipHTML(data, day, h, 'bad'); }).join('') +
+          day.bad.map(function (h) { return chipHTML(day, h, 'bad'); }).join('') +
           '<div class="day-lbl" style="color:var(--good-color)">Build</div>' +
-          day.good.map(function (h) { return chipHTML(data, day, h, 'good'); }).join('') +
+          day.good.map(function (h) { return chipHTML(day, h, 'good'); }).join('') +
         '</div>';
       }).join('');
       setHTML(grid, html);
       grid.querySelectorAll('.habit-chip').forEach(function (chip) { chip.onclick = handleHabitTap; });
 
-      // centre today once, on the first paint; refreshes and theme changes
-      // leave the strip where the user put it
-      var todayCard = grid.querySelector('.today');
-      if (todayCard && !calendarCentered) {
-        calendarCentered = true;
+      // centre today on load and when the date has moved on; other refreshes
+      // and theme changes leave the strip where the user put it. Measured
+      // against the strip itself, so the page around it does not shift it.
+      var today = data.week.filter(function (day) { return day.isToday; })[0];
+      if (today && calendarCenteredOn !== today.iso) {
+        calendarCenteredOn = today.iso;
         setTimeout(function() {
-          var container = todayCard.parentElement.parentElement;
-          var cardLeft = todayCard.offsetLeft;
-          var cardWidth = todayCard.offsetWidth;
-          var containerWidth = container.offsetWidth;
-          container.scrollTo({
-            left: cardLeft - (containerWidth / 2) + (cardWidth / 2),
+          var strip = grid.parentElement;
+          var card = grid.querySelector('.today');
+          if (!card) return;
+          var c = card.getBoundingClientRect();
+          var s = strip.getBoundingClientRect();
+          strip.scrollTo({
+            left: strip.scrollLeft + (c.left - s.left) - (s.width - c.width) / 2,
             behavior: 'smooth'
           });
         }, 300);
@@ -1134,15 +1152,14 @@
     // ── HABIT TAP ─────────────────────────────────────────
     async function handleHabitTap(e) {
       var chip = e.currentTarget;
-      var sheetName = chip.dataset.sheet;
-      var row = parseInt(chip.dataset.row);
+      var date = chip.dataset.date;
       var col = parseInt(chip.dataset.col);
       var currentValue = chip.dataset.checked === 'true';
       var newValue = !currentValue;
       paintChip(chip, newValue);
       HT.pendingWrites++;
       try {
-        var r = await postJson('/api/toggle-habit', { sheetName, row, col });
+        var r = await postJson('/api/toggle-habit', { date, col });
         if (!r.res.ok || !r.data || !r.data.success) {
           paintChip(chip, currentValue);
           alert(friendlyError('toggle-habit', r.res, r.data, null));
