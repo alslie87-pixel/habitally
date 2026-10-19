@@ -119,8 +119,10 @@ test('2027-01-02 on the 2026 sheet: no lock, the week comes from the December ta
   assert.equal(body.month, 'January');
   assert.equal(body.sheetName, 'December');
   assert.equal(body.weekStart, 'Dec 28, 2026');
-  assert.deepEqual(body.week.map(w => w.row), [38, 39, 40, 41, 42, 43, 44]);
-  assert.deepEqual(body.week.map(w => w.isToday), [false, false, false, false, false, true, false]);
+  // the strip ends with the sheet on Jan 3: Dec 30 - Jan 3, no Monday in it
+  assert.deepEqual(body.week.map(w => w.row), [40, 41, 42, 43, 44]);
+  assert.deepEqual(body.week.map(w => w.isToday), [false, false, false, true, false]);
+  assert.ok(body.week.every(w => w.isoWeek === null), 'no Monday, so no divider');
 
   // the streak crosses new year even before the rollover
   assert.equal(body.streak, 4);          // Dec 29, 30, 31, Jan 1
@@ -141,7 +143,10 @@ test('2027-01-04 after rollover: streak, focus and trend read Archive 2026', asy
   assert.ok(!body.outOfYear);
   assert.equal(body.sheetName, 'January');
   assert.equal(body.weekStart, 'Jan 4, 2027');
+  // Jan 1-3 now live only in Archive 2026: read-only, so no cards for them
+  assert.deepEqual(body.week.map(w => w.iso), ['2027-01-04', '2027-01-05', '2027-01-06', '2027-01-07']);
   assert.equal(body.week[0].isToday, true);
+  assert.equal(body.week[0].isoWeek, 1);
 
   assert.equal(body.streak, 13);         // Dec 22 - Jan 3, all out of the archive
   assert.equal(body.goodCount, 13);      // focus X/30 counts December

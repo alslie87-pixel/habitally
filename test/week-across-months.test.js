@@ -136,15 +136,18 @@ test('get-habits on 2026-09-28 serves and writes to the October tab', async () =
   });
   const body = await callGetHabits(grids, '2026-09-28');
 
-  assert.equal(body.sheetName, 'October');          // ticks go to the right tab
+  assert.equal(body.sheetName, 'October');          // the current week's tab
   assert.equal(body.month, 'September');            // the header month is still today's
   assert.equal(body.weekStart, 'Sep 28, 2026');
-  assert.deepEqual(body.week.map(w => w.row), [2, 3, 4, 5, 6, 7, 8]);
-  assert.equal(body.week[0].date, 'Sep 28');
-  assert.deepEqual(body.week.map(w => w.isToday), [true, false, false, false, false, false, false]);
+  // the strip rolls: Fri-Sun from the September tab, Mon-Thu from October
+  assert.deepEqual(body.week.map(w => w.sheetName),
+    ['September', 'September', 'September', 'October', 'October', 'October', 'October']);
+  assert.deepEqual(body.week.map(w => w.row), [33, 34, 35, 2, 3, 4, 5]);
+  assert.equal(body.week[3].date, 'Sep 28');
+  assert.deepEqual(body.week.map(w => w.isToday), [false, false, false, true, false, false, false]);
 
   // the Sep 28 tick lives in the October tab and shows up in the calendar
-  const exercise = body.week[0].good.find(h => h.name === 'Exercise');
+  const exercise = body.week[3].good.find(h => h.name === 'Exercise');
   assert.equal(exercise.checked, true);
   assert.equal(exercise.col, 10);
 
@@ -167,11 +170,13 @@ test('get-habits on 2026-09-28 serves and writes to the October tab', async () =
   assert.equal(exStats.percent, null);
 });
 
-test('get-habits on 2026-09-30: same October week, right today-flag', async () => {
+test('get-habits on 2026-09-30: same October week, today in the middle of the strip', async () => {
   const body = await callGetHabits(buildYear(2026), '2026-09-30');
   assert.equal(body.sheetName, 'October');
   assert.equal(body.weekStart, 'Sep 28, 2026');
-  assert.deepEqual(body.week.map(w => w.isToday), [false, false, true, false, false, false, false]);
+  assert.deepEqual(body.week.map(w => w.iso),
+    ['2026-09-27', '2026-09-28', '2026-09-29', '2026-09-30', '2026-10-01', '2026-10-02', '2026-10-03']);
+  assert.deepEqual(body.week.map(w => w.isToday), [false, false, false, true, false, false, false]);
 });
 
 test('get-habits on 2026-10-01 stays in the October tab it is already in', async () => {
@@ -187,17 +192,21 @@ test('get-habits on 2026-08-31 serves September week 1', async () => {
   const body = await callGetHabits(buildYear(2026), '2026-08-31');
   assert.equal(body.sheetName, 'September');
   assert.equal(body.weekStart, 'Aug 31, 2026');
-  assert.equal(body.week[0].isToday, true);
+  assert.deepEqual(body.week.map(w => w.sheetName),
+    ['August', 'August', 'August', 'September', 'September', 'September', 'September']);
+  assert.equal(body.week[3].iso, '2026-08-31');
+  assert.equal(body.week[3].isToday, true);
 });
 
 test('get-habits on 2026-06-15 is the plain case: own tab, week 3', async () => {
   const body = await callGetHabits(buildYear(2026), '2026-06-15');
   assert.equal(body.sheetName, 'June');
   assert.equal(body.weekStart, 'Jun 15, 2026');
-  assert.deepEqual(body.week.map(w => w.row), [20, 21, 22, 23, 24, 25, 26]);
+  // Fri-Sun of week 2, then Mon-Thu of week 3, all in the June tab
+  assert.deepEqual(body.week.map(w => w.row), [15, 16, 17, 20, 21, 22, 23]);
   assert.equal(body.percent, 0); // nothing ticked
   assert.equal(body.weakest, 'weakest-5-2');
-  assert.equal(body.week[0].isToday, true);
+  assert.equal(body.week[3].isToday, true);
 });
 
 test('get-habits on 2026-12-31 serves December week 5, no lock', async () => {

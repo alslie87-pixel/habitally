@@ -18,14 +18,14 @@ Guidance for Claude (and humans) working in this repo.
 | `_controlPanel.js` | — | The Control Panel layout in one place: habit slots F7:H20 (row decides type: 7-13 bad, 14-20 good; column E is never read or written), the focus cells found by their "Building:"/"Eliminating:" labels (searched in A-D rows 1-60, focus is the cell right of the label; C19/C20 when unlabeled), Z1 marker, and the onboarding rule (Z1 unmarked + zero checkmarks). The app writes only F/G/H 7-20, the two focus cells and Z1 there. |
 | `_date.js` | — | `todayFrom(req)`: the client's `?date=` or server midnight. |
 | `_validate.js` | — | Shared input validation for the write endpoints. |
-| `_week.js` | — | Finds the week that contains today, in whichever month tab it lives. |
+| `_week.js` | — | Finds the week that contains today, in whichever month tab it lives. For single days: the tab (`tabOf`, the month of the week's Thursday), the row (`dayRowIn`), the ISO week number, and the week strip's rolling window (`dayWindow`). |
 | `_streak.js` | — | The streak rule (66%, backwards from yesterday) and the shared sheet-value helpers; the computation itself walks the timeline. |
 | `_year.js` | — | Which dates the sheet covers (its own week formulas); locks the app only when today is past the sheet's last day. |
 | `_timeline.js` | — | The one timeline across years: live tabs + archives merged per calendar date (sheet wins), habits matched on type + name. Streak, focus counters, weekly trend, the rolling 30-day windows and per-habit aggregates live here. |
 | `_trophies.js` | — | Month / season / year trophies for bad habits, per calendar year over timeline days. |
-| `get-habits.js` | **read** (readonly scope) | One batchGet over the twelve month tabs + Control Panel, plus the archives; returns habits, config, and the timeline-derived streak, trend and focus counters. |
+| `get-habits.js` | **read** (readonly scope) | One batchGet over the twelve month tabs + Control Panel, plus the archives; returns habits, config, the week strip (`week`, a rolling window with each day's own tab and row), and the timeline-derived streak, trend and focus counters. |
 | `get-coaching.js` | **none** | No sheet access — takes stats from the request body, calls OpenAI (`OPENAI_API_KEY`), returns a coaching note. |
-| `toggle-habit.js` | **write** | Toggles a habit cell for a day. Dashboard C7 belongs to the sheet’s own Apps Script. |
+| `toggle-habit.js` | **write** | Toggles a habit cell for a day. The app sends the card's `date`; the tab and row are found from it, and a date the live sheet no longer holds is refused (409). The older `sheetName` + `row` shape still works. Dashboard C7 belongs to the sheet’s own Apps Script. |
 | `set-onboarded.js` | **write** | Writes the hidden onboarding marker (Control Panel Z1). |
 | `update-focus.js` | **write** | Updates the current focus. |
 | `update-config.js` | **write** | Updates Control Panel configuration. |
@@ -56,6 +56,14 @@ Guidance for Claude (and humans) working in this repo.
   resets at new year. Month trophies, Next to fall and the year heatmap stay
   calendar-scoped but include archive days that belong to the current month or
   year (1–3 January).
+- **The week strip (`dayWindow`).** The Home strip is a rolling window: today
+  and three days either side, so yesterday is always on screen. Its days come
+  from whichever tab holds them, so the window can span two month tabs (Sat
+  26 – Sun 27 Sep 2026 are in the September tab, Mon 28 Sep in October). Days
+  the live sheet does not hold get no card: before its first date, after its
+  last, and archive days, which are read-only. A purple divider labelled with
+  the ISO week number ("W43") sits before the Monday. Only what is shown rolls:
+  This week %, best week and the trend still count Monday–Sunday.
 - **Trend numbers: the last 30 days (`rollingWindows`).** Momentum, consistency,
   power days, where habits break, vs best month and the Home habit percentages
   compare the last 30 days up to yesterday (today never counts, like the

@@ -1,8 +1,9 @@
 const { google } = require('googleapis');
 const { resolveSheetId } = require('./_user');
-const { todayFrom } = require('./_date');
+const { todayFrom, parseISODate } = require('./_date');
 const { isChecked } = require('./_streak');
 const { sheetYearFrom, sheetEndOfYear, yearState, outOfYearMessage } = require('./_year');
+const { tabOf, dayRowIn } = require('./_week');
 const V = require('./_validate');
 
 // Flips one habit checkbox for one day. Nothing else.
@@ -15,20 +16,31 @@ const V = require('./_validate');
 // The current value is read from the sheet, never trusted from the client,
 // so two devices toggling the same cell cannot desynchronise it. Only day
 // rows in the C..P band of one of the twelve month tabs can be written.
+//
+// The app sends the card's DATE ({ date: 'YYYY-MM-DD', col }); the tab and
+// row are found here. The week strip can show days from two month tabs,
+// and the date is the one thing about a card that cannot go stale: when
+// the tab no longer holds it (an archive day, or a page left open across
+// the rollover), nothing is written. A page loaded before this change still
+// sends { sheetName, row, col }, which is written as before.
 
 const GRID = '!A1:P46';
+
+const DAY_GONE = 'That day is no longer in your sheet, so your week is being refreshed.';
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   if (!V.requirePost(req, res)) return;
   try {
     const body = req.body || {};
-    const sheetName = body.sheetName;
-    const row = V.toInt(body.row);
+    const date = body.date === undefined ? null : parseISODate(body.date);
+    const sheetName = date ? V.MONTHS[tabOf(date)] : body.sheetName;
+    let row = date ? null : V.toInt(body.row);
     const col = V.toInt(body.col);
-    if (!V.isMonthName(sheetName)) return res.status(400).json({ success: false, error: 'Invalid sheetName' });
-    if (!V.isDayRow(row))          return res.status(400).json({ success: false, error: 'Invalid row' });
-    if (!V.isHabitCol(col))        return res.status(400).json({ success: false, error: 'Invalid col' });
+    if (body.date !== undefined && !date) return res.status(400).json({ success: false, error: 'Invalid date' });
+    if (!V.isMonthName(sheetName))   return res.status(400).json({ success: false, error: 'Invalid sheetName' });
+    if (!date && !V.isDayRow(row))   return res.status(400).json({ success: false, error: 'Invalid row' });
+    if (!V.isHabitCol(col))          return res.status(400).json({ success: false, error: 'Invalid col' });
 
     const creds = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT);
     const auth = new google.auth.GoogleAuth({
@@ -58,6 +70,12 @@ module.exports = async (req, res) => {
     const year = yearState(gridYear === null ? null : sheetEndOfYear(gridYear), today);
     if (year.outOfYear) {
       return res.status(409).json({ success: false, error: outOfYearMessage() });
+    }
+
+    if (date) {
+      const r = dayRowIn(targetGrid, date);
+      if (r === -1) return res.status(409).json({ success: false, error: DAY_GONE });
+      row = r + 1;
     }
 
     const currentValue = isChecked((targetGrid[row - 1] || [])[col - 1]);
