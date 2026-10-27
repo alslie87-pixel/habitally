@@ -11,7 +11,10 @@
    the mock only needs them for its preview: the chip row, the "This
    device" line, the note under the phone, the Samsung/Firefox/Chrome and
    iPhone/Android toggles and the demo QR link. The mock's phone frame is
-   the phone itself here, so the guide fills the screen.
+   the phone itself here, so the guide fills the screen. Two changes after
+   review: Android's fake install dialog sits inside the illustration, so
+   it never covers the real buttons, and in the light theme everything
+   outside the illustration follows the app (the illustration stays dark).
    ============================================================ */
 (function () {
   'use strict';
@@ -34,7 +37,6 @@
   });
   window.addEventListener('appinstalled', () => {
     installPrompt = null;
-    markDone();
     guides.forEach(g => g.installed());
   });
 
@@ -50,7 +52,9 @@
     get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
     set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* private mode */ } }
   };
-  function markDone() { store.set(GUIDE_DONE, '1'); }
+  // Only the banner's own "Show me" and × turn the reminder off. "I've
+  // added it" does not: whether the icon really landed cannot be checked.
+  function turnOffReminder() { store.set(GUIDE_DONE, '1'); }
 
   const LINK = P.personalLink(location.origin, location.search);
   const HOST = location.host || 'myhabitallyapp.vercel.app';
@@ -100,6 +104,18 @@
         color:var(--text);font-family:Manrope,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
   *{box-sizing:border-box}
 
+  /* light theme: everything outside the illustration follows the app. Its
+     tokens (--text-primary, --accent-text, …) reach in here as inherited
+     custom properties; the mock's own names are re-pointed at them, and the
+     rules that use --accent, a name the app has too, are set directly. */
+  :host([data-theme="light"]){--bg:transparent;--text:var(--text-primary);--muted:var(--text-secondary);--soft:var(--accent-tint)}
+  :host([data-theme="light"]) .step,:host([data-theme="light"]) .num,:host([data-theme="light"]) .captxt b,
+  :host([data-theme="light"]) .steps li::before,:host([data-theme="light"]) .fallback a{color:var(--accent-text)}
+  :host([data-theme="light"]) .dots i{background:var(--track)}
+  :host([data-theme="light"]) .dots i.on{background:var(--accent-text)}
+  :host([data-theme="light"]) .btn{background:var(--cta-bg)}
+  :host([data-theme="light"]) .btn.ghost{background:transparent;border-color:var(--accent-text)}
+
   /* phone + app: the screen is the phone, so no frame and no fixed height */
   .phone{width:100%;max-width:390px;min-height:100%;margin:0 auto;background:var(--bg);position:relative;overflow:hidden;display:flex;flex-direction:column}
   .app{position:relative;flex:1 0 auto;padding:50px 20px 0;display:flex;flex-direction:column}
@@ -108,6 +124,8 @@
   .app h2{font-size:25px;line-height:1.15;margin:8px 0 8px;letter-spacing:-.02em}
   .lead{color:var(--muted);font-size:15px;line-height:1.5;margin:0 0 16px}
   .stage{position:relative;height:300px;border-radius:18px;background:#0E1020;border:1px solid var(--line);flex:0 0 auto}
+  /* the illustration is the dark phone in both themes */
+  .stage{--text:#EEF0FF;--muted:#8A8FB6;--line:rgba(160,168,255,.14);--card:#13162A;color:var(--text)}
   .stage.short{height:230px}
   .mini{position:absolute;inset:0;overflow:hidden;border-radius:18px}
   .caprow{display:flex;align-items:center;gap:10px;margin:14px 0 0;min-height:28px}
@@ -123,6 +141,7 @@
   .steps li::before{counter-increment:s;content:counter(s);flex:0 0 22px;height:22px;border-radius:50%;background:var(--soft);color:var(--accent);font:800 11px Manrope,system-ui;display:grid;place-items:center;margin-top:-1px}
   .fallback{font-size:12px;color:var(--muted);line-height:1.5;margin:10px 0 0}
   .fallback a{color:var(--accent);font-weight:700;text-decoration:none;cursor:pointer}
+  .fallback b{color:var(--text)}
   .btns{margin-top:auto;padding-bottom:calc(22px + env(safe-area-inset-bottom, 0px))}
   .btn{display:block;width:100%;border:0;border-radius:12px;padding:15px;background:var(--accent);color:#fff;font:800 15px Manrope,system-ui;cursor:pointer}
   .btn.ghost{background:transparent;border:1px solid var(--line);color:var(--text)}
@@ -209,16 +228,19 @@
   .nmini.done .gi.hab img{transform:scale(1)}
   .nmini .gi.hab span{opacity:0;transition:opacity .3s .3s}
   .nmini.done .gi.hab span{opacity:1}
-  .ndlg{position:absolute;left:0;right:0;bottom:-260px;background:var(--and);border-radius:24px 24px 0 0;padding:22px 22px 26px;font-family:Roboto,system-ui,sans-serif;color:#E3E3E3;transition:bottom .4s cubic-bezier(.2,.8,.2,1);z-index:3;box-shadow:0 -10px 30px rgba(0,0,0,.5)}
+  /* the fake install dialog and its scrim live inside the illustration, like
+     the iPhone share sheet: clipped to its corners, at about 4/5 of the mock's
+     full-screen size, so the real buttons below are never covered */
+  .ndlg{position:absolute;left:0;right:0;bottom:-200px;background:var(--and);border-radius:18px 18px 0 0;padding:16px 16px 18px;font-family:Roboto,system-ui,sans-serif;color:#E3E3E3;transition:bottom .4s cubic-bezier(.2,.8,.2,1);z-index:3;box-shadow:0 -8px 24px rgba(0,0,0,.5)}
   .ndlg.show{bottom:0}
   .scrim{position:absolute;inset:0;background:rgba(0,0,0,.5);opacity:0;transition:opacity .3s;z-index:2;pointer-events:none}
   .scrim.show{opacity:1}
-  .nd-title{font-size:20px;margin:0 0 16px}
-  .nd-app{display:flex;align-items:center;gap:14px;margin-bottom:22px}
-  .nd-app img{width:44px;height:44px;border-radius:11px}
-  .nd-app b{display:block;font-size:15px;font-weight:500}.nd-app small{font-size:12px;color:#9AA0A6}
-  .nd-btns{display:flex;justify-content:flex-end;gap:8px;font-size:14px;font-weight:500}
-  .nd-btns span{padding:10px 16px;border-radius:20px;color:var(--andblue)}
+  .nd-title{font-size:16px;margin:0 0 12px}
+  .nd-app{display:flex;align-items:center;gap:12px;margin-bottom:16px}
+  .nd-app img{width:36px;height:36px;border-radius:9px}
+  .nd-app b{display:block;font-size:13px;font-weight:500}.nd-app small{font-size:11px;color:#9AA0A6}
+  .nd-btns{display:flex;justify-content:flex-end;gap:6px;font-size:12px;font-weight:500}
+  .nd-btns span{padding:8px 13px;border-radius:16px;color:var(--andblue)}
   .nd-btns .inst{background:var(--andblue);color:#062E6F}
   .ntop{position:absolute;left:0;right:0;top:0;background:var(--and);padding:8px 8px 8px 12px;display:flex;align-items:center;gap:8px;font:13px Roboto,system-ui,sans-serif;color:#E3E3E3}
   .ntop .omni{flex:1;height:34px;border-radius:17px;background:var(--and2);display:flex;align-items:center;gap:6px;padding:0 12px;font-size:12px;overflow:hidden;white-space:nowrap}
@@ -317,16 +339,17 @@
      opts.onFinish  called once, with 'added' | 'accepted' | 'done' | 'later'  */
   function createGuide(hostEl, opts) {
     const det = detect();
+    // the app's theme, as an attribute the shadow CSS can see (html.light
+    // is outside the shadow root); kept in step if the theme changes
+    const syncTheme = () => { hostEl.dataset.theme = document.documentElement.classList.contains('light') ? 'light' : 'dark'; };
+    syncTheme();
+    const themeWatch = typeof MutationObserver === 'function' ? new MutationObserver(syncTheme) : null;
+    if (themeWatch) themeWatch.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+
     const sr = hostEl.attachShadow({ mode: 'open' });
     sr.innerHTML = `<style>${CSS}</style>
     <div class="phone" id="phone">
       <div class="app" id="app"></div>
-      <div class="scrim" id="scrim" aria-hidden="true"></div>
-      <div class="ndlg" id="ndlg" aria-hidden="true">
-        <div class="nd-title">Install app</div>
-        <div class="nd-app"><img src="${ICON}" alt=""><div><b>HabiTally</b><small>${HOST}</small></div></div>
-        <div class="nd-btns"><span>Cancel</span><span class="inst" id="ndInstall">Install</span></div>
-      </div>
       <div class="ring" id="ring" aria-hidden="true"></div>
       <div class="hand" id="hand" aria-hidden="true">
       ${HAND}
@@ -446,8 +469,14 @@
 
     V.android = {
       html: () => shell({
-        stage: `<div class="nmini" id="nmini">${homeGrid('slot')}</div>`,
-        below: capRow(2) + `<p class="fallback">Nothing happens? Tap ⋮ at the top right, then <b style="color:var(--text)">Add to Home screen</b>.</p>`,
+        stage: `<div class="nmini" id="nmini">${homeGrid('slot')}
+        <div class="scrim" id="scrim"></div>
+        <div class="ndlg" id="ndlg">
+          <div class="nd-title">Install app</div>
+          <div class="nd-app"><img src="${ICON}" alt=""><div><b>HabiTally</b><small>${HOST}</small></div></div>
+          <div class="nd-btns"><span>Cancel</span><span class="inst" id="ndInstall">Install</span></div>
+        </div></div>`,
+        below: capRow(2) + `<p class="fallback">Nothing happens? Tap ⋮ at the top right, then <b>Add to Home screen</b>.</p>`,
         primary: 'Add to home screen'
       }),
       rest() { off('nmini', 'done'); cap(1, 'Tap <b>Add to home screen</b>'); point($('#primary'), 40, 0, true); },
@@ -520,7 +549,6 @@
     function finish(reason) {
       if (finished) return;
       finished = true;
-      if (reason === 'added' || reason === 'accepted') markDone();
       destroy();
       opts.onFinish(reason);
     }
@@ -564,7 +592,6 @@
     /* ---------- switcher ---------- */
     function show(id) {
       stopAll(); current = id;
-      ['scrim', 'ndlg'].forEach(x => off(x));
       hand.style.opacity = 0;
       hand.classList.toggle('edge', id == 'inapp');
       appEl.innerHTML = V[id].html();
@@ -596,6 +623,7 @@
       stopAll();
       clearTimeout(copyTimer);
       document.removeEventListener('visibilitychange', onVisibility);
+      if (themeWatch) themeWatch.disconnect();
       guides.delete(self);
     }
     guides.add(self);
@@ -614,6 +642,8 @@
   .hsg-sheet.show .hsg-sheet-back{opacity:1}
   .hsg-sheet.show .hsg-sheet-panel{transform:none}
   .hsg-sheet-host{height:100%;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+  html.light .hsg-step{background-color:var(--bg-page);background-image:var(--page-glow);background-repeat:no-repeat}
+  html.light .hsg-sheet-panel{background:var(--sheet-bg)}
   .a2hs-banner{display:flex;align-items:center;gap:6px;margin-top:12px;padding:4px 4px 4px 12px;border-radius:14px;
     background:var(--accent-tint);border:1px solid var(--accent-edge)}
   .a2hs-banner span{flex:1 1 auto;min-width:0;font-size:12.5px;font-weight:700;color:var(--text-primary)}
@@ -678,8 +708,8 @@
       '<button type="button" class="a2hs-show">Show me</button>' +
       '<button type="button" class="a2hs-x" aria-label="Close"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>';
     app.insertBefore(b, app.firstChild);
-    b.querySelector('.a2hs-show').onclick = () => { markDone(); b.remove(); openSheet(); };
-    b.querySelector('.a2hs-x').onclick = () => { markDone(); b.remove(); };
+    b.querySelector('.a2hs-show').onclick = () => { turnOffReminder(); b.remove(); openSheet(); };
+    b.querySelector('.a2hs-x').onclick = () => { turnOffReminder(); b.remove(); };
     return true;
   }
 

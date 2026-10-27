@@ -77,7 +77,9 @@ Guidance for Claude (and humans) working in this repo.
   The personal link must stay in the address bar (nothing strips `?user=&t=`),
   since an iPhone home screen app does not share storage with Safari. A phone
   browser tab gets one reminder banner 3 days after onboarding (right away when
-  onboarding predates the guide); `hbt-a2hs-done` in localStorage ends it.
+  onboarding predates the guide). Only the banner's own "Show me" and × end it
+  (`hbt-a2hs-done` in localStorage); "I've added it" in the guide does not.
+  The guide follows the app theme outside its illustration, which stays dark.
 - **Trend numbers: the last 30 days (`rollingWindows`).** Momentum, consistency,
   power days, where habits break, vs best month and the Home habit percentages
   compare the last 30 days up to yesterday (today never counts, like the
