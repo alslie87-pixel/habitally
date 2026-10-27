@@ -5,6 +5,11 @@ Guidance for Claude (and humans) working in this repo.
 ## Stack
 
 - **Frontend:** a single vanilla web app — `index.html` (no framework, no build step).
+  `stats.js` is Insights and onboarding; `platform.js` (which phone and browser,
+  pure functions) and `homescreen.js` (the home screen step, the reminder banner,
+  Android's install prompt) are the "Put HabiTally on your home screen" guide;
+  `sw.js` is a pass-through service worker that caches nothing; `vendor/qrcode.min.js`
+  is qrcodejs 1.0.0 for the desktop QR code.
 - **Backend:** serverless functions in `/api`, talking to a **Google Sheet** as the
   data store via the `googleapis` library.
 - **Hosting:** deployed on **Vercel** → https://habit-tracker-tau-tan.vercel.app
@@ -27,6 +32,7 @@ Guidance for Claude (and humans) working in this repo.
 | `get-coaching.js` | **none** | No sheet access — takes stats from the request body, calls OpenAI (`OPENAI_API_KEY`), returns a coaching note. |
 | `toggle-habit.js` | **write** | Toggles a habit cell for a day. The app sends the card's `date`; the tab and row are found from it, and a date the live sheet no longer holds is refused (409). The older `sheetName` + `row` shape still works. Dashboard C7 belongs to the sheet’s own Apps Script. |
 | `set-onboarded.js` | **write** | Writes the hidden onboarding marker (Control Panel Z1). |
+| `manifest.js` | **none** | The web app manifest per customer: `start_url` is `/?user=…&t=…` (format-checked, URL-encoded), so the home screen icon opens the personal link. The page links it with its own params. |
 | `update-focus.js` | **write** | Updates the current focus. |
 | `update-config.js` | **write** | Updates Control Panel configuration. |
 | `_archive.js` | **read** | Reads the hidden "Archive <startyear>" tabs that the sheet's own Start new year menu (rolloverYear) writes: one metadata call for the tab names, one batchGet for the rows. The app never starts a new year itself. |
@@ -64,6 +70,14 @@ Guidance for Claude (and humans) working in this repo.
   last, and archive days, which are read-only. A purple divider labelled with
   the ISO week number ("W43") sits before the Monday. Only what is shown rolls:
   This week %, best week and the trend still count Monday–Sunday.
+- **The home screen step.** Onboarding is Welcome, Habits, Focus, Done and, unless
+  the app already runs from the home screen, a fifth step with the guide for the
+  detected phone and browser. The setup is saved when Done is left, before the
+  guide: on an iPhone the new icon is opened before anyone returns to Safari.
+  The personal link must stay in the address bar (nothing strips `?user=&t=`),
+  since an iPhone home screen app does not share storage with Safari. A phone
+  browser tab gets one reminder banner 3 days after onboarding (right away when
+  onboarding predates the guide); `hbt-a2hs-done` in localStorage ends it.
 - **Trend numbers: the last 30 days (`rollingWindows`).** Momentum, consistency,
   power days, where habits break, vs best month and the Home habit percentages
   compare the last 30 days up to yesterday (today never counts, like the
