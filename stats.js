@@ -784,8 +784,14 @@
   let obRemoved = { bad: [], good: [] };   // sheet names taken out with ×
   let focus = { good: null, bad: null };
   let obError = '';
+  let obSaved = false;
+  let obGuide = null;
 
-  const OB_STEPS = ['Welcome', 'Habits', 'Focus', 'Done'];
+  // The last step puts HabiTally on the home screen (homescreen.js). It is
+  // left out when the app already runs from there.
+  const OB_HOME = !!(window.HTHome && window.HTHome.offerStep());
+  const OB_STEPS = ['Welcome', 'Habits', 'Focus', 'Done'].concat(OB_HOME ? ['Home screen'] : []);
+  const OB_DONE = 3;   // the summary; it saves the setup
   const OB_MAX = 7;
   // the icon's tile check, without its dark square
   const OB_TICK = `<svg width="120" height="105" viewBox="0 0 66.9 58.3" aria-hidden="true" style="display:block"><rect x='60.20' y='0.00' width='6.7' height='6.7' rx='1.6' fill='#ec4899'/><rect x='51.60' y='8.60' width='6.7' height='6.7' rx='1.6' fill='#da4ca5'/><rect x='60.20' y='8.60' width='6.7' height='6.7' rx='1.6' fill='#e24a9f'/><rect x='0.00' y='17.20' width='6.7' height='6.7' rx='1.6' fill='#6366f1'/><rect x='43.00' y='17.20' width='6.7' height='6.7' rx='1.6' fill='#c850b0'/><rect x='51.60' y='17.20' width='6.7' height='6.7' rx='1.6' fill='#d04eab'/><rect x='0.00' y='25.80' width='6.7' height='6.7' rx='1.6' fill='#6665ef'/><rect x='8.60' y='25.80' width='6.7' height='6.7' rx='1.6' fill='#6f63e9'/><rect x='34.40' y='25.80' width='6.7' height='6.7' rx='1.6' fill='#b654bc'/><rect x='43.00' y='25.80' width='6.7' height='6.7' rx='1.6' fill='#be52b6'/><rect x='8.60' y='34.40' width='6.7' height='6.7' rx='1.6' fill='#7861e4'/><rect x='17.20' y='34.40' width='6.7' height='6.7' rx='1.6' fill='#815fde'/><rect x='25.80' y='34.40' width='6.7' height='6.7' rx='1.6' fill='#a458c7'/><rect x='34.40' y='34.40' width='6.7' height='6.7' rx='1.6' fill='#ac56c2'/><rect x='17.20' y='43.00' width='6.7' height='6.7' rx='1.6' fill='#8a5dd8'/><rect x='25.80' y='43.00' width='6.7' height='6.7' rx='1.6' fill='#9a5ace'/><rect x='34.40' y='43.00' width='6.7' height='6.7' rx='1.6' fill='#a258c8'/><rect x='25.80' y='51.60' width='6.7' height='6.7' rx='1.6' fill='#945bd2'/></svg>`;
@@ -806,7 +812,7 @@
     return '<div class="obx-steps">' + OB_STEPS.map((n, i) => {
       const on = i <= step;
       return `<div class="obx-step${on ? ' on' : ''}${i === step ? ' cur' : ''}"${i === step ? ' aria-current="step"' : ''}>` +
-        `<i${on ? ` style="background:${obTile(i / 3)}"` : ''}>${i + 1}</i><span>${n}</span></div>`;
+        `<i${on ? ` style="background:${obTile(i / (OB_STEPS.length - 1))}"` : ''}>${i + 1}</i><span>${n}</span></div>`;
     }).join('') + '</div>';
   }
 
@@ -836,17 +842,27 @@
   }
 
   function paintFoot() {
-    const labels = [['Let’s set up', OB_ARROW], ['Keep these', OB_CHECK], ['Continue', OB_ARROW], ['Tick your first habit', OB_ARROW]];
+    // the home screen step has its own buttons
+    if (step > OB_DONE) { obFoot.innerHTML = ''; return; }
+    const labels = [['Let’s set up', OB_ARROW], ['Keep these', OB_CHECK], ['Continue', OB_ARROW],
+                    [OB_HOME ? 'Continue' : 'Tick your first habit', OB_ARROW]];
     const [label, icon] = labels[step];
     const disabled = step === 2 && !(focus.good && focus.bad);
     obFoot.innerHTML = '<div class="obx-foot-in">' +
       (obError ? `<div class="obx-err" role="alert">${esc(obError)}</div>` : '') +
       `<button type="button" class="obx-btn" id="obx-next"${disabled ? ' disabled' : ''}>${label}${icon}</button>` +
-      (step === 3 ? '<div class="obx-foot">Writes your habits to the sheet · shows only once</div>' : '') +
+      (step === OB_DONE ? '<div class="obx-foot">Writes your habits to the sheet · shows only once</div>' : '') +
       '</div>';
   }
 
   function obRender() {
+    if (step > OB_DONE) {
+      // the guide fills the screen over the onboarding; any of its buttons
+      // finishes onboarding (the setup is already saved by then)
+      paintFoot();
+      if (!obGuide) obGuide = window.HTHome.mountStep({ step: `STEP ${step + 1} OF ${OB_STEPS.length}`, onFinish: obFinish });
+      return;
+    }
     const kicker = (t, c) => `<div class="ink-k" style="color:${c}">${t}</div>`;
     let body = '';
     if (step === 0) body = `
@@ -891,7 +907,13 @@
       if (!obNames('good').includes(focus.good)) focus.good = obNames('good')[0];
       if (!obNames('bad').includes(focus.bad)) focus.bad = obNames('bad')[0];
     }
-    if (step === 3) { await obFinish(); return; }
+    if (step === OB_DONE) {
+      if (!OB_HOME) { await obFinish(); return; }
+      // Saved before the home screen step: on an iPhone, adding the icon
+      // jumps to the home screen, and the icon is opened before anyone comes
+      // back to Safari to tap "I've added it".
+      if (!(await obSave())) return;
+    }
     step++; obRender();
     ob.scrollTop = 0;
   }
@@ -936,9 +958,12 @@
     while (gone.length) { await config({ action: 'remove', name: gone[0] }); gone.shift(); }
   }
 
-  async function obFinish() {
+  // Writes the whole setup once. True when it is in the sheet; on a failure
+  // the error shows under the button and the step stays.
+  async function obSave() {
+    if (obSaved) return true;
     const btn = $('#obx-next', obFoot);
-    btn.disabled = true; btn.textContent = 'Setting up…';
+    if (btn) { btn.disabled = true; btn.textContent = 'Setting up…'; }
     try {
       for (const type of ['bad', 'good']) await obSaveType(type);
       await obPost('/update-focus', { type: 'good', habitName: focus.good });
@@ -948,8 +973,16 @@
       console.error('onboarding write failed', e);
       obError = 'Couldn’t save your setup (' + e.message + '). Please try again.';
       paintFoot();
-      return;
+      return false;
     }
+    obSaved = true;
+    obError = '';
+    if (window.HTHome) window.HTHome.markOnboarded();   // starts the reminder's 3 days
+    return true;
+  }
+
+  async function obFinish() {
+    if (!(await obSave())) return;
     ob.classList.remove('show');
     location.reload();
   }
@@ -963,6 +996,8 @@
         obRemoved[type] = [];
       }
       step = 0; obRender(); ob.classList.add('show');
+    } else if (s && window.HTHome) {
+      window.HTHome.maybeRemind();   // onboarding is behind this user
     }
   });
 })();

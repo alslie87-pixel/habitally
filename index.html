@@ -8,13 +8,22 @@
   <link rel="icon" href="/icons/favicon-32.png" sizes="32x32" type="image/png">
   <link rel="icon" href="/icons/favicon-16.png" sizes="16x16" type="image/png">
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
-  <!-- No start_url in the manifest, on purpose: it then falls back to the
-       document URL, so a home-screen launch keeps the customer's
-       ?user=...&t=... query. A bare "/" would drop it and every personal
-       link would stop working. -->
-  <link rel="manifest" href="/manifest.webmanifest">
-  <meta name="theme-color" content="#0d0f20">
+  <!-- The manifest comes from /api/manifest with this page's own user and
+       token, so its start_url is the customer's personal link and the home
+       screen icon opens their app, not an empty one. An iPhone home screen
+       app does not share storage with Safari, so the link is all it has. -->
+  <script src="/platform.js"></script>
+  <script>
+    (function () {
+      var link = document.createElement('link');
+      link.rel = 'manifest';
+      link.href = HTPlatform.manifestHref(location.search);
+      document.head.appendChild(link);
+    })();
+  </script>
+  <meta name="theme-color" content="#0B0D1C">
   <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="HabiTally">
   <meta name="application-name" content="HabiTally">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
@@ -585,6 +594,8 @@
       <div id="focus-modal-options"></div>
     </div>
   </div>
+  <!-- before the page's own script: it catches Android's install prompt at app start -->
+  <script src="/homescreen.js"></script>
   <script>
     // multi-user: ?user=<name>&t=<token> routes API calls to that customer's
     // sheet. Both are forwarded verbatim on every API call; the server checks
